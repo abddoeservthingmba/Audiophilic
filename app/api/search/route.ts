@@ -13,154 +13,165 @@ export interface Track {
   streamUrl: string
   duration: number
   playCount: number
-  source: 'ytmusic' | 'itunes'
+  source: 'ytmusic'
   isPreview: false
   genre?: string
-  ytId?: string
+  ytId: string
 }
 
-function proxyImage(url: string): string {
-  if (!url || url.startsWith('data:') || url.startsWith('/')) return url
-  return `/api/image?url=${encodeURIComponent(url)}`
-}
+const PIPED_NODES = [
+  'https://pipedapi.kavin.rocks',
+  'https://api.piped.video',
+  'https://pipedapi.adminforge.de',
+  'https://pipedapi.mha.fi',
+  'https://pipedapi.drgns.space',
+]
 
-function itunesArtworkUrl(raw: string, size: number): string {
-  const url = raw.replace('100x100bb', `${size}x${size}bb`).replace('100x100', `${size}x${size}`)
-  return proxyImage(url)
+const INVIDIOUS_NODES = [
+  'https://yewtu.be',
+  'https://inv.tux.pizza',
+  'https://vid.puffyan.us',
+  'https://invidious.nerdvpn.de',
+]
+
+function getYtThumbnail(videoId: string): { '150x150': string; '480x480': string; '1000x1000': string } {
+  const url = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
+  const proxied = `/api/image?url=${encodeURIComponent(url)}`
+  return { '150x150': proxied, '480x480': proxied, '1000x1000': proxied }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function mapItunesTrack(t: any): Track | null {
-  if (!t.trackName || !t.artistName) return null
-  const raw = t.artworkUrl100 ?? ''
-  const directFallback = t.previewUrl ? encodeURIComponent(t.previewUrl) : ''
-  const queryParam = encodeURIComponent(`${t.trackName} ${t.artistName}`)
+function mapYtTrack(item: any): Track | null {
+  if (!item) return null
+  const videoId = item.url ? item.url.replace('/watch?v=', '') : item.videoId
+  if (!videoId) return null
+
+  const title = item.title ?? item.name ?? 'Unknown Title'
+  const artist = item.uploaderName ?? item.author ?? item.artist ?? 'YouTube Music'
 
   return {
-    id: `itunes-${t.trackId}`,
-    title: t.trackName,
-    artist: t.artistName,
-    album: t.collectionName,
-    artwork: {
-      '150x150': itunesArtworkUrl(raw, 150),
-      '480x480': itunesArtworkUrl(raw, 600),
-      '1000x1000': itunesArtworkUrl(raw, 1000),
-    },
-    // Stream full audio via query with direct unique song fallback
-    streamUrl: `/api/stream?q=${queryParam}&fallback=${directFallback}`,
-    duration: Math.round((t.trackTimeMillis ?? 210000) / 1000),
-    playCount: 0,
-    source: 'itunes',
+    id: `yt-${videoId}`,
+    ytId: videoId,
+    title,
+    artist,
+    album: item.album ?? 'YouTube Music',
+    artwork: getYtThumbnail(videoId),
+    streamUrl: `/api/stream?ytId=${encodeURIComponent(videoId)}`,
+    duration: item.duration ?? 220,
+    playCount: item.views ?? 0,
+    source: 'ytmusic',
     isPreview: false,
-    genre: t.primaryGenreName,
   }
 }
 
-async function searchItunes(query: string, limit = 40): Promise<Track[]> {
-  try {
-    const res = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&entity=song&limit=${limit}&country=us`, {
-      headers: { 'User-Agent': 'Audiophilic/1.0' },
-      next: { revalidate: 300 },
-    })
-    if (!res.ok) return []
-    const json = await res.json()
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (json.results ?? []).map(mapItunesTrack).filter((t: Track | null): t is Track => t !== null)
-  } catch {
-    return []
+// Search Piped Nodes for YouTube Music Tracks
+async function searchPiped(query: string, limit = 30): Promise<Track[]> {
+  for (const node of PIPED_NODES) {
+    try {
+      const res = await fetch(`${node}/search?q=${encodeURIComponent(query)}&filter=music_songs`, {
+        headers: { 'User-Agent': 'Audiophilic/1.0' },
+        next: { revalidate: 300 },
+      })
+      if (!res.ok) continue
+      const json = await res.json()
+      const items = json.items ?? []
+      if (Array.isArray(items) && items.length > 0) {
+        const mapped = items.map(mapYtTrack).filter((t: Track | null): t is Track => t !== null)
+        if (mapped.length > 0) return mapped.slice(0, limit)
+      }
+    } catch {
+      // try next
+    }
   }
+  return []
 }
 
-async function getItunesCharts(limit = 40): Promise<Track[]> {
-  try {
-    const res = await fetch(`https://itunes.apple.com/us/rss/topsongs/limit=${limit}/json`, {
-      headers: { 'User-Agent': 'Audiophilic/1.0' },
-      next: { revalidate: 3600 },
-    })
-    if (!res.ok) return []
-    const json = await res.json()
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const entries: any[] = json?.feed?.entry ?? []
-    const ids = entries.map((e: any) => e?.id?.attributes?.['im:id']).filter(Boolean).slice(0, limit)
-    if (ids.length === 0) return []
-
-    const lookupRes = await fetch(
-      `https://itunes.apple.com/lookup?id=${ids.join(',')}&entity=song`,
-      { next: { revalidate: 3600 } }
-    )
-    if (!lookupRes.ok) return []
-    const lookupJson = await lookupRes.json()
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const tracks = (lookupJson.results ?? []).filter((r: any) => r.kind === 'song')
-    return tracks.map(mapItunesTrack).filter((t: Track | null): t is Track => t !== null)
-  } catch {
-    return []
+// Search Invidious Nodes for YouTube Music Tracks
+async function searchInvidious(query: string, limit = 30): Promise<Track[]> {
+  for (const node of INVIDIOUS_NODES) {
+    try {
+      const res = await fetch(`${node}/api/v1/search?q=${encodeURIComponent(query)}&type=video`, {
+        headers: { 'User-Agent': 'Audiophilic/1.0' },
+        next: { revalidate: 300 },
+      })
+      if (!res.ok) continue
+      const json = await res.json()
+      if (Array.isArray(json) && json.length > 0) {
+        const mapped = json.map(mapYtTrack).filter((t: Track | null): t is Track => t !== null)
+        if (mapped.length > 0) return mapped.slice(0, limit)
+      }
+    } catch {
+      // try next
+    }
   }
+  return []
 }
 
 export const FALLBACK_TRACKS: Track[] = [
   {
-    id: 'itunes-1217008644',
-    title: 'Shape of You',
-    artist: 'Ed Sheeran',
-    album: '÷ (Deluxe)',
-    artwork: {
-      '150x150': proxyImage('https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/a7/67/7f/a7677f50-6a9c-0975-d1fb-5e28a50bc78d/825646708761.jpg/150x150bb.jpg'),
-      '480x480': proxyImage('https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/a7/67/7f/a7677f50-6a9c-0975-d1fb-5e28a50bc78d/825646708761.jpg/600x600bb.jpg'),
-      '1000x1000': proxyImage('https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/a7/67/7f/a7677f50-6a9c-0975-d1fb-5e28a50bc78d/825646708761.jpg/1000x1000bb.jpg'),
-    },
-    streamUrl: '/api/stream?q=Shape%20of%20You%20Ed%20Sheeran',
-    duration: 233,
-    playCount: 0,
-    source: 'itunes',
+    id: 'yt-kJQP7kiw5Fk',
+    ytId: 'kJQP7kiw5Fk',
+    title: 'Despacito',
+    artist: 'Luis Fonsi ft. Daddy Yankee',
+    artwork: getYtThumbnail('kJQP7kiw5Fk'),
+    streamUrl: '/api/stream?ytId=kJQP7kiw5Fk',
+    duration: 281,
+    playCount: 8000000000,
+    source: 'ytmusic',
     isPreview: false,
   },
   {
-    id: 'itunes-1440871141',
+    id: 'yt-JGwWNGJdvx8',
+    ytId: 'JGwWNGJdvx8',
+    title: 'Shape of You',
+    artist: 'Ed Sheeran',
+    artwork: getYtThumbnail('JGwWNGJdvx8'),
+    streamUrl: '/api/stream?ytId=JGwWNGJdvx8',
+    duration: 233,
+    playCount: 6000000000,
+    source: 'ytmusic',
+    isPreview: false,
+  },
+  {
+    id: 'yt-4NRXx6U8ABQ',
+    ytId: '4NRXx6U8ABQ',
     title: 'Blinding Lights',
     artist: 'The Weeknd',
-    album: 'After Hours',
-    artwork: {
-      '150x150': proxyImage('https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/8e/3c/6f/8e3c6f66-1c80-60f3-8b43-41c6e174092b/20UMGIM10667.rgb.jpg/150x150bb.jpg'),
-      '480x480': proxyImage('https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/8e/3c/6f/8e3c6f66-1c80-60f3-8b43-41c6e174092b/20UMGIM10667.rgb.jpg/600x600bb.jpg'),
-      '1000x1000': proxyImage('https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/8e/3c/6f/8e3c6f66-1c80-60f3-8b43-41c6e174092b/20UMGIM10667.rgb.jpg/1000x1000bb.jpg'),
-    },
-    streamUrl: '/api/stream?q=Blinding%20Lights%20The%20Weeknd',
+    artwork: getYtThumbnail('4NRXx6U8ABQ'),
+    streamUrl: '/api/stream?ytId=4NRXx6U8ABQ',
     duration: 200,
-    playCount: 0,
-    source: 'itunes',
+    playCount: 4000000000,
+    source: 'ytmusic',
     isPreview: false,
   },
 ]
 
 export async function GET(request: NextRequest) {
   const query = request.nextUrl.searchParams.get('q') ?? request.nextUrl.searchParams.get('query')
-  const type = request.nextUrl.searchParams.get('type')
   const genre = request.nextUrl.searchParams.get('genre')
 
+  const searchQuery = query || (genre && genre !== 'All' ? `${genre} Top Hits` : 'Top Music Hits Trending')
+
   try {
-    let tracks: Track[] = []
+    const [piped, invidious] = await Promise.allSettled([
+      searchPiped(searchQuery, 35),
+      searchInvidious(searchQuery, 35),
+    ])
 
-    if (type === 'trending' || !query) {
-      tracks = await getItunesCharts(40)
-    } else {
-      tracks = await searchItunes(query, 40)
-    }
+    const results: Track[] = [
+      ...(piped.status === 'fulfilled' ? piped.value : []),
+      ...(invidious.status === 'fulfilled' ? invidious.value : []),
+    ]
 
-    if (tracks.length === 0) {
-      tracks = await getItunesCharts(30)
-    }
-
-    if (tracks.length === 0) {
+    if (results.length === 0) {
       return Response.json(FALLBACK_TRACKS)
     }
 
-    // Deduplicate by title + artist
+    // Deduplicate by YouTube Video ID
     const seen = new Set<string>()
-    const deduped = tracks.filter((t) => {
-      const key = `${t.title.toLowerCase()}::${t.artist.toLowerCase()}`
-      if (seen.has(key)) return false
-      seen.add(key)
+    const deduped = results.filter((t) => {
+      if (seen.has(t.ytId)) return false
+      seen.add(t.ytId)
       return true
     })
 

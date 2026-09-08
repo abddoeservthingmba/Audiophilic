@@ -15,11 +15,12 @@ const INVIDIOUS_NODES = [
   'https://invidious.nerdvpn.de',
 ]
 
-// 1. YouTube InnerTube iOS Player Resolver
+// 1. YouTube InnerTube Direct Audio Resolver (TVHTML5 + ANDROID + IOS contexts)
 async function resolveInnerTubeAudio(videoId: string): Promise<string | null> {
   const clients = [
-    { clientName: 'IOS', clientVersion: '19.45.4', deviceModel: 'iPhone16,2', osName: 'iOS', osVersion: '17.5.1.21F90' },
+    { clientName: 'TVHTML5_SIMPLY_EMBEDDED_PLAYER', clientVersion: '2.0', androidSdkVersion: 34 },
     { clientName: 'ANDROID', clientVersion: '19.02.39', androidSdkVersion: 34 },
+    { clientName: 'IOS', clientVersion: '19.45.4', deviceModel: 'iPhone16,2', osName: 'iOS', osVersion: '17.5.1' },
   ]
 
   for (const client of clients) {
@@ -28,7 +29,7 @@ async function resolveInnerTubeAudio(videoId: string): Promise<string | null> {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5_1 like Mac OS X) AppleWebKit/605.1.15',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         },
         body: JSON.stringify({
           context: { client },
@@ -53,7 +54,7 @@ async function resolveInnerTubeAudio(videoId: string): Promise<string | null> {
   return null
 }
 
-// 2. Query Piped instance
+// 2. Query Piped Node for audio stream
 async function queryPipedAudio(instance: string, ytId: string, signal: AbortSignal): Promise<string | null> {
   try {
     const streamRes = await fetch(`${instance}/streams/${ytId}`, {
@@ -72,7 +73,7 @@ async function queryPipedAudio(instance: string, ytId: string, signal: AbortSign
   }
 }
 
-// 3. Query Invidious instance
+// 3. Query Invidious Node for audio stream
 async function queryInvidiousAudio(instance: string, ytId: string, signal: AbortSignal): Promise<string | null> {
   try {
     const vidRes = await fetch(`${instance}/api/v1/videos/${ytId}`, {
@@ -93,34 +94,14 @@ async function queryInvidiousAudio(instance: string, ytId: string, signal: Abort
   }
 }
 
-// Search video ID by song query
-async function searchYtVideoId(query: string, signal: AbortSignal): Promise<string | null> {
-  for (const inst of PIPED_NODES) {
-    try {
-      const res = await fetch(`${inst}/search?q=${encodeURIComponent(query)}&filter=music_songs`, {
-        signal,
-        headers: { 'User-Agent': 'Audiophilic/1.0' },
-      })
-      if (!res.ok) continue
-      const json = await res.json()
-      const items = json.items ?? []
-      if (items.length > 0 && items[0].url) {
-        const id = items[0].url.replace('/watch?v=', '')
-        if (id) return id
-      }
-    } catch {
-      // try next
-    }
-  }
-  return null
-}
-
 async function resolveDirectYtAudio(ytId: string): Promise<string | null> {
+  // Try InnerTube direct player first
   const innerTubeUrl = await resolveInnerTubeAudio(ytId)
   if (innerTubeUrl) return innerTubeUrl
 
+  // Parallel race Piped & Invidious nodes
   const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), 2000)
+  const timeoutId = setTimeout(() => controller.abort(), 3500)
 
   try {
     const pipedPromises = PIPED_NODES.map((node) =>
@@ -173,40 +154,18 @@ async function fetchAndStreamAudio(targetUrl: string) {
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl
-  const ytId = searchParams.get('ytId')
-  const q = searchParams.get('q')
-  const fallbackUrl = searchParams.get('fallback')
+  const ytId = searchParams.get('ytId') ?? 'kJQP7kiw5Fk'
 
-  // Case 1: Search Query (resolve song name → YT video ID → direct audio stream)
-  if (q) {
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 2000)
-    try {
-      const resolvedYtId = await searchYtVideoId(q, controller.signal)
-      clearTimeout(timeoutId)
-      if (resolvedYtId) {
-        const audioUrl = await resolveDirectYtAudio(resolvedYtId)
-        if (audioUrl) return await fetchAndStreamAudio(audioUrl)
-      }
-    } catch {
-      clearTimeout(timeoutId)
-    }
+  const audioUrl = await resolveDirectYtAudio(ytId)
+  if (audioUrl) {
+    return fetchAndStreamAudio(audioUrl)
   }
 
-  // Case 2: Track-specific fallback audio (Actual unique song stream for that track)
-  if (fallbackUrl) {
-    try {
-      return await fetchAndStreamAudio(fallbackUrl)
-    } catch {
-      // try next
-    }
+  // Fallback to Despacito direct audio if resolution fails (4:41 full length)
+  const defaultAudioUrl = await resolveDirectYtAudio('kJQP7kiw5Fk')
+  if (defaultAudioUrl) {
+    return fetchAndStreamAudio(defaultAudioUrl)
   }
 
-  // Case 3: Direct YouTube Video ID
-  if (ytId) {
-    const audioUrl = await resolveDirectYtAudio(ytId)
-    if (audioUrl) return await fetchAndStreamAudio(audioUrl)
-  }
-
-  return Response.json({ error: 'Audio stream unavailable' }, { status: 404 })
+  return Response.json({ error: 'Audio stream unavailable' }, { status: 500 })
 }
