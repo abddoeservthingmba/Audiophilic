@@ -20,6 +20,10 @@ const nextConfig: NextConfig = {
       // Jamendo
       { protocol: 'https', hostname: 'usercontent.jamendo.com' },
       { protocol: 'https', hostname: '**.jamendo.com' },
+      // Deezer
+      { protocol: 'https', hostname: '**.dzcdn.net' },
+      { protocol: 'https', hostname: 'e-cdns-images.dzcdn.net' },
+      { protocol: 'https', hostname: 'cdns-images.dzcdn.net' },
     ],
   },
   async headers() {

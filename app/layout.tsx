@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import { Geist } from 'next/font/google'
 import './globals.css'
-import SpotifyProvider from '@/components/SpotifyProvider'
 import AudioController from '@/components/AudioController'
 import MiniPlayer from '@/components/MiniPlayer'
 import FullPlayer from '@/components/FullPlayer'
@@ -13,20 +12,18 @@ export const viewport: Viewport = {
 }
 
 export const metadata: Metadata = {
-  title: 'Audiophilic — Stream Music',
-  description: 'Zero-ad, Apple Music-grade streaming engine.',
+  title: 'Audiophilic — Unlimited Music Streaming',
+  description: 'Zero-ad, Apple Music-grade streaming engine with instant playback.',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${geist.variable} dark`}>
       <body className="bg-black text-white min-h-screen antialiased font-sans">
-        <SpotifyProvider>
-          <AudioController />
-          {children}
-          <MiniPlayer />
-          <FullPlayer />
-        </SpotifyProvider>
+        <AudioController />
+        {children}
+        <MiniPlayer />
+        <FullPlayer />
       </body>
     </html>
   )

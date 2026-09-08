@@ -11,8 +11,8 @@ export interface Track {
   streamUrl: string
   duration: number
   playCount: number
-  source: 'itunes' | 'audius' | 'jamendo' | 'fallback' | 'spotify'
-  isPreview?: boolean // iTunes 30-sec previews
+  source: 'deezer' | 'itunes' | 'audius' | 'jamendo' | 'fallback'
+  isPreview?: boolean
   genre?: string
 }
 
@@ -21,7 +21,57 @@ export type Genre = 'All' | 'Pop' | 'Hip-Hop/Rap' | 'Electronic' | 'R&B/Soul' | 
 export const GENRES: Genre[] = ['All', 'Pop', 'Hip-Hop/Rap', 'Electronic', 'R&B/Soul', 'Rock', 'Country', 'Latin', 'Dance']
 
 // ─────────────────────────────────────────────────────────────────────────────
-// iTunes / Apple Music (no API key, CORS-enabled, mainstream catalog)
+// Deezer Music (Global Charts & Search - No API key needed)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapDeezerTrack(t: any): Track | null {
+  if (!t.preview && !t.link) return null
+  const cover = t.album?.cover_medium ?? t.album?.cover_big ?? `https://placehold.co/480x480/1a1a2e/ffffff?text=${encodeURIComponent((t.title ?? 'D').charAt(0))}`
+  return {
+    id: `deezer-${t.id}`,
+    title: t.title ?? 'Unknown',
+    artist: t.artist?.name ?? 'Unknown',
+    album: t.album?.title,
+    artwork: {
+      '150x150': t.album?.cover_small ?? cover,
+      '480x480': t.album?.cover_big ?? cover,
+      '1000x1000': t.album?.cover_xl ?? cover,
+    },
+    streamUrl: t.preview,
+    duration: t.duration ?? 30,
+    playCount: t.rank ?? 0,
+    source: 'deezer',
+    isPreview: true,
+  }
+}
+
+async function getDeezerCharts(limit = 30): Promise<Track[]> {
+  try {
+    const res = await fetch(`https://api.deezer.com/chart/0/tracks?limit=${limit}`, { next: { revalidate: 3600 } })
+    if (!res.ok) return []
+    const json = await res.json()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (json.data ?? []).map(mapDeezerTrack).filter((t: Track | null): t is Track => t !== null)
+  } catch {
+    return []
+  }
+}
+
+async function searchDeezer(query: string, limit = 25): Promise<Track[]> {
+  try {
+    const res = await fetch(`https://api.deezer.com/search?q=${encodeURIComponent(query)}&limit=${limit}`, { next: { revalidate: 300 } })
+    if (!res.ok) return []
+    const json = await res.json()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (json.data ?? []).map(mapDeezerTrack).filter((t: Track | null): t is Track => t !== null)
+  } catch {
+    return []
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// iTunes / Apple Music (Top Charts & Search)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const ITUNES_GENRE_IDS: Record<Genre, number | null> = {
@@ -56,7 +106,7 @@ function mapItunesTrack(t: any): Track | null {
       '480x480': itunesArtworkUrl(raw, 600),
       '1000x1000': itunesArtworkUrl(raw, 1000),
     },
-    streamUrl: t.previewUrl, // direct CDN — no proxy needed, CORS allowed
+    streamUrl: t.previewUrl,
     duration: Math.round((t.trackTimeMillis ?? 30000) / 1000),
     playCount: 0,
     source: 'itunes',
@@ -65,7 +115,7 @@ function mapItunesTrack(t: any): Track | null {
   }
 }
 
-async function getItunesCharts(genre: Genre = 'All', limit = 50): Promise<Track[]> {
+async function getItunesCharts(genre: Genre = 'All', limit = 40): Promise<Track[]> {
   const genreId = ITUNES_GENRE_IDS[genre]
   const genrePath = genreId ? `/genre-id=${genreId}/` : '/'
 
@@ -75,13 +125,11 @@ async function getItunesCharts(genre: Genre = 'All', limit = 50): Promise<Track[
       const res = await fetch(url, { next: { revalidate: 3600 } })
       if (!res.ok) continue
       const json = await res.json()
-      // RSS feed → fetch track IDs then lookup details for previewUrl
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const entries: any[] = json?.feed?.entry ?? []
       const ids = entries.map((e: any) => e?.id?.attributes?.['im:id']).filter(Boolean).slice(0, limit)
       if (ids.length === 0) continue
 
-      // Batch lookup to get previewUrl
       const lookupRes = await fetch(
         `https://itunes.apple.com/lookup?id=${ids.join(',')}&entity=song`,
         { next: { revalidate: 3600 } }
@@ -93,7 +141,7 @@ async function getItunesCharts(genre: Genre = 'All', limit = 50): Promise<Track[
       const mapped = tracks.map(mapItunesTrack).filter((t: Track | null): t is Track => t !== null)
       if (mapped.length > 0) return mapped
     } catch {
-      // try next country
+      // try next
     }
   }
   return []
@@ -114,7 +162,7 @@ async function searchItunes(query: string, limit = 25): Promise<Track[]> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Audius (full songs, independent artists)
+// Audius (Full-length stream tracks)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const AUDIUS_NODES = [
@@ -155,7 +203,7 @@ async function getAudiusTrending(genre = 'All', limit = 25): Promise<Track[]> {
       if (!Array.isArray(json.data) || json.data.length === 0) continue
       return json.data.map(mapAudiusTrack)
     } catch {
-      // try next node
+      // try next
     }
   }
   return []
@@ -171,14 +219,14 @@ async function searchAudius(query: string, limit = 20): Promise<Track[]> {
       if (!Array.isArray(json.data)) continue
       return json.data.map(mapAudiusTrack)
     } catch {
-      // try next node
+      // try next
     }
   }
   return []
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Jamendo (free full songs, Creative Commons)
+// Jamendo (Full-length CC tracks)
 // ─────────────────────────────────────────────────────────────────────────────
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -258,20 +306,22 @@ export const FALLBACK_TRACKS: Track[] = [
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function getTrendingTracks(genre: Genre = 'All', limit = 50): Promise<Track[]> {
-  const [itunes, audius, jamendo] = await Promise.allSettled([
-    getItunesCharts(genre, Math.min(limit, 50)),
+  const [deezer, itunes, audius, jamendo] = await Promise.allSettled([
+    getDeezerCharts(25),
+    getItunesCharts(genre, 25),
     getAudiusTrending(genre, 20),
     genre === 'All' ? getJamendoTrending(15) : Promise.resolve([]),
   ])
 
   const all: Track[] = [
+    ...(deezer.status === 'fulfilled' ? deezer.value : []),
     ...(itunes.status === 'fulfilled' ? itunes.value : []),
     ...(audius.status === 'fulfilled' ? audius.value : []),
     ...(jamendo.status === 'fulfilled' ? jamendo.value : []),
   ]
 
   if (all.length === 0) return FALLBACK_TRACKS
-  // Deduplicate by title+artist (case-insensitive)
+
   const seen = new Set<string>()
   return all.filter((t) => {
     const key = `${t.title.toLowerCase()}::${t.artist.toLowerCase()}`
@@ -284,13 +334,15 @@ export async function getTrendingTracks(genre: Genre = 'All', limit = 50): Promi
 export async function searchTracks(query: string, limit = 50): Promise<Track[]> {
   if (!query.trim()) return getTrendingTracks('All', limit)
 
-  const [itunes, audius, jamendo] = await Promise.allSettled([
-    searchItunes(query, 25),
-    searchAudius(query, 20),
+  const [deezer, itunes, audius, jamendo] = await Promise.allSettled([
+    searchDeezer(query, 20),
+    searchItunes(query, 20),
+    searchAudius(query, 15),
     searchJamendo(query, 15),
   ])
 
   const all: Track[] = [
+    ...(deezer.status === 'fulfilled' ? deezer.value : []),
     ...(itunes.status === 'fulfilled' ? itunes.value : []),
     ...(audius.status === 'fulfilled' ? audius.value : []),
     ...(jamendo.status === 'fulfilled' ? jamendo.value : []),
@@ -307,7 +359,6 @@ export async function searchTracks(query: string, limit = 50): Promise<Track[]> 
   })
 }
 
-// Keep old export for compatibility
 export function getStreamUrl(trackId: string): string {
   return `/api/stream?id=${encodeURIComponent(trackId)}`
 }

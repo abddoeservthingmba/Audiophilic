@@ -12,7 +12,7 @@ interface TrackCardProps {
 }
 
 const SOURCE_BADGE: Record<string, { label: string; color: string }> = {
-  spotify: { label: '💚', color: 'bg-[#1db954]/80' },
+  deezer:  { label: '🎧', color: 'bg-amber-500/80 text-black font-extrabold' },
   itunes:  { label: '🍎', color: 'bg-pink-500/80' },
   audius:  { label: '🎵', color: 'bg-purple-500/80' },
   jamendo: { label: '🎸', color: 'bg-green-500/80' },
@@ -75,13 +75,6 @@ export default function TrackCard({ track, index, allTracks }: TrackCardProps) {
         <div className={`absolute top-2 left-2 text-xs px-1.5 py-0.5 rounded-md font-bold backdrop-blur-sm ${badge.color}`}>
           {badge.label}
         </div>
-
-        {/* Preview pill */}
-        {track.isPreview && (
-          <div className="absolute bottom-2 left-2 text-xs px-2 py-0.5 rounded-full bg-black/70 text-white/70 backdrop-blur-sm">
-            Preview
-          </div>
-        )}
 
         {/* Now playing bars */}
         {isCurrentTrack && isPlaying && (
