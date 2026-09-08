@@ -101,12 +101,12 @@ export default function Home() {
           <div className="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3">
             {/* Logo */}
             <div className="flex items-center gap-2 flex-shrink-0">
-              <div className="w-9 h-9 rounded-full bg-red-600 flex items-center justify-center shadow-lg shadow-red-600/30">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center shadow-lg shadow-purple-500/20">
                 <Music2 size={18} className="text-white" />
               </div>
               <div className="hidden sm:block">
                 <span className="text-base font-extrabold text-white tracking-tight leading-none block">Audiophilic</span>
-                <span className="text-[10px] text-red-400 tracking-wider uppercase font-extrabold">YouTube Music Engine</span>
+                <span className="text-[10px] text-indigo-400 tracking-wider uppercase font-bold">Zero-Ad Engine</span>
               </div>
             </div>
 
@@ -117,11 +117,11 @@ export default function Home() {
                 <input
                   ref={inputRef}
                   type="text"
-                  placeholder="Search YouTube Music for songs, artists, albums…"
+                  placeholder="Search songs, artists, albums…"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   className="w-full bg-white/10 border border-white/10 rounded-full pl-10 pr-9 py-2 text-sm text-white
-                    placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-red-500/70
+                    placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-indigo-500/70
                     focus:border-transparent transition-all focus:bg-white/15 shadow-inner"
                 />
                 {query && (
@@ -136,11 +136,6 @@ export default function Home() {
                 )}
               </div>
             </form>
-
-            {/* YT Music Tag */}
-            <div className="hidden md:flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-600/20 border border-red-500/30 text-red-400 text-xs font-bold flex-shrink-0">
-              🔴 Full-Length Audio Engine
-            </div>
           </div>
 
           {/* Genre Tabs */}
@@ -152,7 +147,7 @@ export default function Home() {
                   onClick={() => handleGenre(g)}
                   className={`flex-shrink-0 px-4 py-1.5 rounded-full text-xs font-semibold tracking-wide transition-all
                     ${activeGenre === g
-                      ? 'bg-red-600 text-white shadow-lg shadow-red-600/30 scale-105'
+                      ? 'bg-white text-black shadow-lg scale-105'
                       : 'bg-white/10 text-white/60 hover:bg-white/20 hover:text-white'
                     }`}
                 >
@@ -168,9 +163,9 @@ export default function Home() {
           <div className="max-w-7xl mx-auto px-4 mt-6 mb-6">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                <Flame size={18} className="text-red-500" /> Trending Hits
+                <Flame size={18} className="text-orange-400" /> Trending Hits
               </h2>
-              <span className="text-xs text-white/40">100% Seamless Full Tracks</span>
+              <span className="text-xs text-white/40">Full Length Audio</span>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {tracks.slice(0, 6).map((t, idx) => (
@@ -185,10 +180,10 @@ export default function Home() {
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={t.artwork['150x150']} alt={t.title} className="w-14 h-14 rounded-lg object-cover flex-shrink-0" />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-white truncate group-hover:text-red-400 transition-colors">{t.title}</p>
+                    <p className="text-sm font-semibold text-white truncate group-hover:text-indigo-300 transition-colors">{t.title}</p>
                     <p className="text-xs text-white/50 truncate mt-0.5">{t.artist}</p>
                   </div>
-                  <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center mr-1 group-hover:bg-red-600 text-white transition-all">
+                  <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center mr-1 group-hover:bg-white text-white group-hover:text-black transition-all">
                     <Sparkles size={16} />
                   </div>
                 </div>
@@ -202,25 +197,25 @@ export default function Home() {
           <div>
             <h2 className="text-xl font-bold text-white flex items-center gap-2">
               {searchMode ? (
-                `YouTube Music Results for "${query}"`
+                `Results for "${query}"`
               ) : activeGenre === 'All' ? (
                 <>
-                  <Radio size={20} className="text-red-500" /> YouTube Music Charts
+                  <Radio size={20} className="text-indigo-400" /> Top Charts
                 </>
               ) : (
-                `🔴 ${activeGenre} YouTube Music Hits`
+                `🎵 ${activeGenre} Charts`
               )}
             </h2>
             {!searchMode && !loading && (
               <p className="text-xs text-white/30 mt-0.5">
-                Full-Length Audio Streams · {tracks.length} tracks
+                {tracks.length} tracks
               </p>
             )}
           </div>
           {searchMode && (
             <button
               onClick={handleClearSearch}
-              className="text-sm text-red-400 hover:text-red-300 transition-colors flex items-center gap-1"
+              className="text-sm text-indigo-400 hover:text-indigo-300 transition-colors flex items-center gap-1"
             >
               <X size={13} /> Clear
             </button>
@@ -240,7 +235,7 @@ export default function Home() {
               <p className="text-sm mt-1">Try searching for an artist or song name</p>
               <button
                 onClick={handleClearSearch}
-                className="mt-4 px-5 py-2 rounded-full bg-red-600 text-white text-sm font-bold hover:bg-red-500 transition-colors"
+                className="mt-4 px-5 py-2 rounded-full bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-500 transition-colors"
               >
                 Browse Top Hits
               </button>
