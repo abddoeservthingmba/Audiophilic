@@ -1,7 +1,8 @@
 'use client'
 
+import { useState } from 'react'
 import Image from 'next/image'
-import { Play } from 'lucide-react'
+import { Play, Music2 } from 'lucide-react'
 import { usePlayerStore } from '@/store/usePlayerStore'
 import type { Track } from '@/lib/api'
 
@@ -27,6 +28,7 @@ function formatDuration(s: number): string {
 
 export default function TrackCard({ track, index, allTracks }: TrackCardProps) {
   const { setQueue, playTrack, currentIndex, queue, isPlaying } = usePlayerStore()
+  const [imageError, setImageError] = useState(false)
   const isCurrentTrack = queue[currentIndex]?.id === track.id
 
   function handlePlay() {
@@ -44,15 +46,23 @@ export default function TrackCard({ track, index, allTracks }: TrackCardProps) {
       aria-label={`Play ${track.title} by ${track.artist}`}
     >
       {/* Artwork */}
-      <div className="relative aspect-square w-full bg-white/5">
-        <Image
-          src={track.artwork['480x480']}
-          alt={track.title}
-          fill
-          className="object-cover"
-          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
-          unoptimized
-        />
+      <div className="relative aspect-square w-full bg-gradient-to-br from-zinc-900 via-neutral-900 to-red-950/40 flex items-center justify-center">
+        {!imageError ? (
+          <Image
+            src={track.artwork['480x480']}
+            alt={track.title}
+            fill
+            className="object-cover"
+            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
+            onError={() => setImageError(true)}
+            unoptimized
+          />
+        ) : (
+          <div className="flex flex-col items-center justify-center p-4 text-center">
+            <Music2 size={32} className="text-red-500/70 mb-1" />
+            <span className="text-[10px] text-white/40 line-clamp-1">{track.title}</span>
+          </div>
+        )}
 
         {/* Play overlay */}
         <div className={`absolute inset-0 flex items-center justify-center bg-black/40

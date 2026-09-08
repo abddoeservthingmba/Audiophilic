@@ -24,6 +24,9 @@ const nextConfig: NextConfig = {
       { protocol: 'https', hostname: '**.dzcdn.net' },
       { protocol: 'https', hostname: 'e-cdns-images.dzcdn.net' },
       { protocol: 'https', hostname: 'cdns-images.dzcdn.net' },
+      // YouTube
+      { protocol: 'https', hostname: 'i.ytimg.com' },
+      { protocol: 'https', hostname: '**.ytimg.com' },
     ],
   },
   async headers() {
