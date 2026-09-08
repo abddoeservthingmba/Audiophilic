@@ -11,20 +11,20 @@ export interface Track {
   streamUrl: string
   duration: number
   playCount: number
-  source: 'deezer' | 'itunes' | 'audius' | 'fallback'
+  source: 'ytmusic'
   isPreview: false
   genre?: string
-  ytId?: string
+  ytId: string
 }
 
 export type Genre = 'All' | 'Pop' | 'Hip-Hop/Rap' | 'Electronic' | 'R&B/Soul' | 'Rock' | 'Country' | 'Latin' | 'Dance'
 
 export const GENRES: Genre[] = ['All', 'Pop', 'Hip-Hop/Rap', 'Electronic', 'R&B/Soul', 'Rock', 'Country', 'Latin', 'Dance']
 
-// Safe YouTube thumbnail fallback
 function getYtThumbnail(videoId: string): { '150x150': string; '480x480': string; '1000x1000': string } {
   const url = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
-  return { '150x150': url, '480x480': url, '1000x1000': url }
+  const proxied = `/api/image?url=${encodeURIComponent(url)}`
+  return { '150x150': proxied, '480x480': proxied, '1000x1000': proxied }
 }
 
 export const FALLBACK_TRACKS: Track[] = [
@@ -37,7 +37,7 @@ export const FALLBACK_TRACKS: Track[] = [
     streamUrl: '/api/stream?ytId=kJQP7kiw5Fk',
     duration: 228,
     playCount: 8000000000,
-    source: 'fallback',
+    source: 'ytmusic',
     isPreview: false,
   },
   {
@@ -49,7 +49,7 @@ export const FALLBACK_TRACKS: Track[] = [
     streamUrl: '/api/stream?ytId=JGwWNGJdvx8',
     duration: 233,
     playCount: 6000000000,
-    source: 'fallback',
+    source: 'ytmusic',
     isPreview: false,
   },
   {
@@ -61,16 +61,12 @@ export const FALLBACK_TRACKS: Track[] = [
     streamUrl: '/api/stream?ytId=4NRXx6U8ABQ',
     duration: 200,
     playCount: 4000000000,
-    source: 'fallback',
+    source: 'ytmusic',
     isPreview: false,
   },
 ]
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CORS-Free Server API Calls (Routes via /api/search Route Handler)
-// ─────────────────────────────────────────────────────────────────────────────
-
-export async function getTrendingTracks(genre: Genre = 'All', limit = 50): Promise<Track[]> {
+export async function getTrendingTracks(genre: Genre = 'All', limit = 40): Promise<Track[]> {
   try {
     const res = await fetch(`/api/search?type=trending&genre=${encodeURIComponent(genre)}&limit=${limit}`)
     if (!res.ok) return FALLBACK_TRACKS
@@ -81,7 +77,7 @@ export async function getTrendingTracks(genre: Genre = 'All', limit = 50): Promi
   }
 }
 
-export async function searchTracks(query: string, limit = 50): Promise<Track[]> {
+export async function searchTracks(query: string, limit = 40): Promise<Track[]> {
   if (!query.trim()) return getTrendingTracks('All', limit)
   try {
     const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&limit=${limit}`)

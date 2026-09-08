@@ -73,11 +73,6 @@ export default function TrackCard({ track, index, allTracks }: TrackCardProps) {
           </div>
         </div>
 
-        {/* YT Music Source badge */}
-        <div className="absolute top-2 left-2 text-[11px] px-2 py-0.5 rounded-full font-extrabold bg-red-600/90 text-white backdrop-blur-sm shadow flex items-center gap-1">
-          <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" /> YT Music
-        </div>
-
         {/* Now playing animated bars */}
         {isCurrentTrack && isPlaying && (
           <div className="absolute top-2 right-2 flex gap-0.5 items-end h-4">

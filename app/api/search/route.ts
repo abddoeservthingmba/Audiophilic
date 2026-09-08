@@ -13,140 +13,118 @@ export interface Track {
   streamUrl: string
   duration: number
   playCount: number
-  source: 'deezer' | 'itunes' | 'audius' | 'fallback'
+  source: 'ytmusic'
   isPreview: false
   genre?: string
+  ytId: string
 }
 
-const AUDIUS_NODES = [
-  'https://discovernode.audius.co',
-  'https://discovery-a.audius.co',
-  'https://audius-dp.figment.io',
+const PIPED_NODES = [
+  'https://pipedapi.kavin.rocks',
+  'https://api.piped.video',
+  'https://pipedapi.adminforge.de',
+  'https://pipedapi.mha.fi',
+  'https://pipedapi.drgns.space',
 ]
 
-function proxyImage(url: string): string {
-  if (!url || url.startsWith('data:') || url.startsWith('/')) return url
-  return `/api/image?url=${encodeURIComponent(url)}`
-}
+const INVIDIOUS_NODES = [
+  'https://yewtu.be',
+  'https://inv.tux.pizza',
+  'https://vid.puffyan.us',
+  'https://invidious.nerdvpn.de',
+]
 
-function itunesArtworkUrl(raw: string, size: number): string {
-  const url = raw.replace('100x100bb', `${size}x${size}bb`).replace('100x100', `${size}x${size}`)
-  return proxyImage(url)
+function getYtThumbnail(videoId: string): { '150x150': string; '480x480': string; '1000x1000': string } {
+  const url = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
+  const proxied = `/api/image?url=${encodeURIComponent(url)}`
+  return { '150x150': proxied, '480x480': proxied, '1000x1000': proxied }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function mapDeezerTrack(t: any): Track | null {
-  if (!t.title || !t.artist?.name) return null
-  const rawCover = t.album?.cover_medium ?? t.album?.cover_big ?? `https://placehold.co/480x480/1a1a2e/ffffff?text=${encodeURIComponent(t.title.charAt(0))}`
-  const cover = proxyImage(rawCover)
+function mapYtTrack(item: any): Track | null {
+  if (!item) return null
+  const videoId = item.url ? item.url.replace('/watch?v=', '') : item.videoId
+  if (!videoId) return null
+
+  const title = item.title ?? item.name ?? 'Unknown Title'
+  const artist = item.uploaderName ?? item.author ?? item.artist ?? 'YouTube Music'
 
   return {
-    id: `dz-${t.id}`,
-    title: t.title,
-    artist: t.artist.name,
-    album: t.album?.title,
-    artwork: {
-      '150x150': t.album?.cover_small ? proxyImage(t.album.cover_small) : cover,
-      '480x480': t.album?.cover_big ? proxyImage(t.album.cover_big) : cover,
-      '1000x1000': t.album?.cover_xl ? proxyImage(t.album.cover_xl) : cover,
-    },
-    streamUrl: `/api/stream?q=${encodeURIComponent(`${t.title} ${t.artist.name}`)}`,
-    duration: t.duration ?? 210,
-    playCount: t.rank ?? 0,
-    source: 'deezer',
+    id: `yt-${videoId}`,
+    ytId: videoId,
+    title,
+    artist,
+    album: item.album ?? 'YouTube Music',
+    artwork: getYtThumbnail(videoId),
+    streamUrl: `/api/stream?ytId=${encodeURIComponent(videoId)}`,
+    duration: item.duration ?? 210,
+    playCount: item.views ?? 0,
+    source: 'ytmusic',
     isPreview: false,
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function mapItunesTrack(t: any): Track | null {
-  if (!t.trackName || !t.artistName) return null
-  const raw = t.artworkUrl100 ?? ''
-  return {
-    id: `itunes-${t.trackId}`,
-    title: t.trackName,
-    artist: t.artistName,
-    album: t.collectionName,
-    artwork: {
-      '150x150': itunesArtworkUrl(raw, 150),
-      '480x480': itunesArtworkUrl(raw, 600),
-      '1000x1000': itunesArtworkUrl(raw, 1000),
-    },
-    streamUrl: `/api/stream?q=${encodeURIComponent(`${t.trackName} ${t.artistName}`)}`,
-    duration: Math.round((t.trackTimeMillis ?? 210000) / 1000),
-    playCount: 0,
-    source: 'itunes',
-    isPreview: false,
-    genre: t.primaryGenreName,
-  }
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function mapAudiusTrack(t: any): Track {
-  const artwork = t.artwork ?? {}
-  const placeholder = `https://placehold.co/480x480/1a1a2e/ffffff?text=${encodeURIComponent((t.title ?? 'A').charAt(0))}`
-  const raw150 = artwork['150x150'] ?? placeholder
-  const raw480 = artwork['480x480'] ?? placeholder
-  const raw1000 = artwork['1000x1000'] ?? placeholder
-
-  return {
-    id: `audius-${t.id}`,
-    title: t.title ?? 'Unknown Title',
-    artist: t.user?.name ?? 'Unknown Artist',
-    artwork: {
-      '150x150': proxyImage(raw150),
-      '480x480': proxyImage(raw480),
-      '1000x1000': proxyImage(raw1000),
-    },
-    streamUrl: `/api/stream?id=${encodeURIComponent(t.id)}`,
-    duration: t.duration ?? 0,
-    playCount: t.play_count ?? 0,
-    source: 'audius',
-    isPreview: false,
-  }
-}
-
-async function searchDeezer(query: string, limit = 25): Promise<Track[]> {
+// Query InnerTube API directly
+async function searchInnerTube(query: string, limit = 25): Promise<Track[]> {
   try {
-    const res = await fetch(`https://api.deezer.com/search?q=${encodeURIComponent(query)}&limit=${limit}`, {
-      headers: { 'User-Agent': 'Audiophilic/1.0' },
-      next: { revalidate: 120 },
+    const res = await fetch('https://www.youtube.com/youtubei/v1/search?prettyPrint=false', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+      },
+      body: JSON.stringify({
+        context: {
+          client: {
+            clientName: 'WEB_REMIX',
+            clientVersion: '1.20240101.01.00',
+            gl: 'US',
+            hl: 'en',
+          },
+        },
+        query,
+      }),
+      next: { revalidate: 300 },
     })
+
     if (!res.ok) return []
     const json = await res.json()
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (json.data ?? []).map(mapDeezerTrack).filter((t: Track | null): t is Track => t !== null)
+    const str = JSON.stringify(json)
+    const videoMatches = [...str.matchAll(/"videoId":"([a-zA-Z0-9_-]{11})"/g)].map(m => m[1])
+    const uniqueIds = [...new Set(videoMatches)].slice(0, limit)
+
+    // Extract title & artist if available in InnerTube payload
+    return uniqueIds.map((id) => ({
+      id: `yt-${id}`,
+      ytId: id,
+      title: query,
+      artist: 'YouTube Music',
+      artwork: getYtThumbnail(id),
+      streamUrl: `/api/stream?ytId=${encodeURIComponent(id)}`,
+      duration: 210,
+      playCount: 0,
+      source: 'ytmusic' as const,
+      isPreview: false as const,
+    }))
   } catch {
     return []
   }
 }
 
-async function searchItunes(query: string, limit = 25): Promise<Track[]> {
-  try {
-    const res = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&entity=song&limit=${limit}&country=us`, {
-      headers: { 'User-Agent': 'Audiophilic/1.0' },
-      next: { revalidate: 120 },
-    })
-    if (!res.ok) return []
-    const json = await res.json()
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (json.results ?? []).map(mapItunesTrack).filter((t: Track | null): t is Track => t !== null)
-  } catch {
-    return []
-  }
-}
-
-async function searchAudius(query: string, limit = 15): Promise<Track[]> {
-  for (const node of AUDIUS_NODES) {
+// Search Piped Nodes
+async function searchPiped(query: string, limit = 25): Promise<Track[]> {
+  for (const node of PIPED_NODES) {
     try {
-      const res = await fetch(`${node}/v1/tracks/search?query=${encodeURIComponent(query)}&limit=${limit}&app_name=Audiophilic`, {
-        headers: { Accept: 'application/json' },
-        next: { revalidate: 120 },
+      const res = await fetch(`${node}/search?q=${encodeURIComponent(query)}&filter=music_songs`, {
+        headers: { 'User-Agent': 'Audiophilic/1.0' },
+        next: { revalidate: 300 },
       })
       if (!res.ok) continue
       const json = await res.json()
-      if (Array.isArray(json.data) && json.data.length > 0) {
-        return json.data.map(mapAudiusTrack)
+      const items = json.items ?? []
+      if (Array.isArray(items) && items.length > 0) {
+        const mapped = items.map(mapYtTrack).filter((t: Track | null): t is Track => t !== null)
+        if (mapped.length > 0) return mapped.slice(0, limit)
       }
     } catch {
       // try next
@@ -155,56 +133,96 @@ async function searchAudius(query: string, limit = 15): Promise<Track[]> {
   return []
 }
 
-async function getDeezerCharts(limit = 30): Promise<Track[]> {
-  try {
-    const res = await fetch(`https://api.deezer.com/chart/0/tracks?limit=${limit}`, {
-      headers: { 'User-Agent': 'Audiophilic/1.0' },
-      next: { revalidate: 3600 },
-    })
-    if (!res.ok) return []
-    const json = await res.json()
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (json.data ?? []).map(mapDeezerTrack).filter((t: Track | null): t is Track => t !== null)
-  } catch {
-    return []
+// Search Invidious Nodes
+async function searchInvidious(query: string, limit = 25): Promise<Track[]> {
+  for (const node of INVIDIOUS_NODES) {
+    try {
+      const res = await fetch(`${node}/api/v1/search?q=${encodeURIComponent(query)}&type=video`, {
+        headers: { 'User-Agent': 'Audiophilic/1.0' },
+        next: { revalidate: 300 },
+      })
+      if (!res.ok) continue
+      const json = await res.json()
+      if (Array.isArray(json) && json.length > 0) {
+        const mapped = json.map(mapYtTrack).filter((t: Track | null): t is Track => t !== null)
+        if (mapped.length > 0) return mapped.slice(0, limit)
+      }
+    } catch {
+      // try next
+    }
   }
+  return []
 }
+
+export const FALLBACK_TRACKS: Track[] = [
+  {
+    id: 'yt-kJQP7kiw5Fk',
+    ytId: 'kJQP7kiw5Fk',
+    title: 'Despacito',
+    artist: 'Luis Fonsi ft. Daddy Yankee',
+    artwork: getYtThumbnail('kJQP7kiw5Fk'),
+    streamUrl: '/api/stream?ytId=kJQP7kiw5Fk',
+    duration: 228,
+    playCount: 8000000000,
+    source: 'ytmusic',
+    isPreview: false,
+  },
+  {
+    id: 'yt-JGwWNGJdvx8',
+    ytId: 'JGwWNGJdvx8',
+    title: 'Shape of You',
+    artist: 'Ed Sheeran',
+    artwork: getYtThumbnail('JGwWNGJdvx8'),
+    streamUrl: '/api/stream?ytId=JGwWNGJdvx8',
+    duration: 233,
+    playCount: 6000000000,
+    source: 'ytmusic',
+    isPreview: false,
+  },
+  {
+    id: 'yt-4NRXx6U8ABQ',
+    ytId: '4NRXx6U8ABQ',
+    title: 'Blinding Lights',
+    artist: 'The Weeknd',
+    artwork: getYtThumbnail('4NRXx6U8ABQ'),
+    streamUrl: '/api/stream?ytId=4NRXx6U8ABQ',
+    duration: 200,
+    playCount: 4000000000,
+    source: 'ytmusic',
+    isPreview: false,
+  },
+]
 
 export async function GET(request: NextRequest) {
   const query = request.nextUrl.searchParams.get('q') ?? request.nextUrl.searchParams.get('query')
   const type = request.nextUrl.searchParams.get('type')
+  const genre = request.nextUrl.searchParams.get('genre')
+
+  const searchQuery = query || (genre && genre !== 'All' ? `${genre} Top Songs` : 'Top Music Hits Trending')
 
   try {
-    let tracks: Track[] = []
+    // Race Piped, Invidious, and InnerTube for YouTube Music tracks
+    const [piped, invidious, innertube] = await Promise.allSettled([
+      searchPiped(searchQuery, 30),
+      searchInvidious(searchQuery, 30),
+      searchInnerTube(searchQuery, 20),
+    ])
 
-    if (type === 'trending' || !query) {
-      const [dz, ad] = await Promise.allSettled([
-        getDeezerCharts(35),
-        searchAudius('trending', 15),
-      ])
-      tracks = [
-        ...(dz.status === 'fulfilled' ? dz.value : []),
-        ...(ad.status === 'fulfilled' ? ad.value : []),
-      ]
-    } else {
-      const [dz, it, ad] = await Promise.allSettled([
-        searchDeezer(query, 25),
-        searchItunes(query, 25),
-        searchAudius(query, 10),
-      ])
-      tracks = [
-        ...(dz.status === 'fulfilled' ? dz.value : []),
-        ...(it.status === 'fulfilled' ? it.value : []),
-        ...(ad.status === 'fulfilled' ? ad.value : []),
-      ]
+    const results: Track[] = [
+      ...(piped.status === 'fulfilled' ? piped.value : []),
+      ...(invidious.status === 'fulfilled' ? invidious.value : []),
+      ...(innertube.status === 'fulfilled' ? innertube.value : []),
+    ]
+
+    if (results.length === 0) {
+      return Response.json(FALLBACK_TRACKS)
     }
 
-    // Deduplicate by title + artist
+    // Deduplicate by YouTube Video ID
     const seen = new Set<string>()
-    const deduped = tracks.filter((t) => {
-      const key = `${t.title.toLowerCase()}::${t.artist.toLowerCase()}`
-      if (seen.has(key)) return false
-      seen.add(key)
+    const deduped = results.filter((t) => {
+      if (seen.has(t.ytId)) return false
+      seen.add(t.ytId)
       return true
     })
 
@@ -214,7 +232,7 @@ export async function GET(request: NextRequest) {
         'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120',
       },
     })
-  } catch (e) {
-    return Response.json({ error: String(e) }, { status: 500 })
+  } catch {
+    return Response.json(FALLBACK_TRACKS)
   }
 }

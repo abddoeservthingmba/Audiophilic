@@ -21,9 +21,6 @@ const AUDIUS_NODES = [
   'https://audius-dp.figment.io',
 ]
 
-// Backup direct MP3 streams (100% working, CORS open)
-const FALLBACK_AUDIO = 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'
-
 // Query Piped instance for audio URL
 async function queryPipedAudio(instance: string, ytId: string, signal: AbortSignal): Promise<string | null> {
   try {
@@ -88,7 +85,7 @@ async function searchYtVideoId(query: string, signal: AbortSignal): Promise<stri
 
 async function resolveDirectYtAudio(ytId: string): Promise<string | null> {
   const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), 2500)
+  const timeoutId = setTimeout(() => controller.abort(), 2000)
 
   try {
     const pipedPromises = PIPED_NODES.map((node) =>
@@ -138,17 +135,8 @@ async function fetchAndStreamAudio(targetUrl: string) {
         'X-Content-Type-Options': 'nosniff',
       },
     })
-  } catch {
-    // If stream fails, proxy fallback audio directly
-    const fbRes = await fetch(FALLBACK_AUDIO)
-    return new Response(fbRes.body, {
-      status: 200,
-      headers: {
-        'Content-Type': 'audio/mpeg',
-        'Access-Control-Allow-Origin': '*',
-        'Cache-Control': 'public, max-age=7200',
-      },
-    })
+  } catch (e) {
+    throw e
   }
 }
 
@@ -156,12 +144,13 @@ export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl
   const ytId = searchParams.get('ytId')
   const q = searchParams.get('q')
+  const fallbackUrl = searchParams.get('fallback')
   const id = searchParams.get('id')
 
   // Case 1: Search Query (resolve song name → YT video ID → direct audio stream)
   if (q) {
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 2500)
+    const timeoutId = setTimeout(() => controller.abort(), 2000)
     try {
       const resolvedYtId = await searchYtVideoId(q, controller.signal)
       clearTimeout(timeoutId)
@@ -174,24 +163,32 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Case 2: Direct YouTube Video ID
+  // Case 2: Track-specific fallback audio (Actual unique song stream)
+  if (fallbackUrl) {
+    try {
+      return await fetchAndStreamAudio(fallbackUrl)
+    } catch {
+      // try next
+    }
+  }
+
+  // Case 3: Direct YouTube Video ID
   if (ytId) {
     const audioUrl = await resolveDirectYtAudio(ytId)
     if (audioUrl) return fetchAndStreamAudio(audioUrl)
   }
 
-  // Case 3: Audius Track ID stream
+  // Case 4: Audius Track ID stream
   if (id) {
     for (const node of AUDIUS_NODES) {
       try {
         const streamUrl = `${node}/v1/tracks/${id}/stream?app_name=Audiophilic`
-        return fetchAndStreamAudio(streamUrl)
+        return await fetchAndStreamAudio(streamUrl)
       } catch {
         // try next
       }
     }
   }
 
-  // Case 4: Final safe response — Stream direct MP3 (No 302 redirect, No ORB block)
-  return fetchAndStreamAudio(FALLBACK_AUDIO)
+  return Response.json({ error: 'Audio stream unavailable' }, { status: 404 })
 }
