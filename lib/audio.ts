@@ -5,6 +5,7 @@ export interface AudioCallbacks {
   onLoad?: (duration: number) => void
   onError?: (error: unknown) => void
   onProgress?: (seek: number, duration: number) => void
+  onBuffering?: (buffering: boolean) => void
 }
 
 declare global {
@@ -114,12 +115,17 @@ class AudioEngine {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             onStateChange: (event: any) => {
               if (event.data === 1) { // PLAYING
+                this.callbacks.onBuffering?.(false)
                 this.callbacks.onPlay?.()
                 this.startProgressTimer()
               } else if (event.data === 2) { // PAUSED
+                this.callbacks.onBuffering?.(false)
                 this.callbacks.onPause?.()
                 this.stopProgressTimer()
+              } else if (event.data === 3) { // BUFFERING
+                this.callbacks.onBuffering?.(true)
               } else if (event.data === 0) { // ENDED
+                this.callbacks.onBuffering?.(false)
                 this.stopProgressTimer()
                 this.callbacks.onEnd?.()
               }

@@ -27,7 +27,7 @@ function formatDuration(s: number): string {
 }
 
 export default function TrackCard({ track, index, allTracks }: TrackCardProps) {
-  const { setQueue, playTrack, currentIndex, queue, isPlaying } = usePlayerStore()
+  const { setQueue, playTrack, currentIndex, queue, isPlaying, isBuffering } = usePlayerStore()
   const [imageError, setImageError] = useState(false)
   const isCurrentTrack = queue[currentIndex]?.id === track.id
 
@@ -64,17 +64,22 @@ export default function TrackCard({ track, index, allTracks }: TrackCardProps) {
           </div>
         )}
 
-        {/* Play overlay */}
+        {/* Play / Buffering Overlay */}
         <div className={`absolute inset-0 flex items-center justify-center bg-black/40
           transition-opacity duration-200
-          ${isCurrentTrack && isPlaying ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-          <div className="w-12 h-12 rounded-full bg-red-600 flex items-center justify-center shadow-lg transform group-hover:scale-110 transition-transform">
-            <Play size={20} fill="white" className="text-white ml-0.5" />
+          ${isCurrentTrack ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+          <div className="w-12 h-12 rounded-full bg-red-600/90 flex items-center justify-center shadow-lg transform group-hover:scale-110 transition-transform overflow-hidden p-1">
+            {isCurrentTrack && isBuffering ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src="/icon.png" alt="Loading" className="w-full h-full object-contain animate-spin" />
+            ) : (
+              <Play size={20} fill="white" className="text-white ml-0.5" />
+            )}
           </div>
         </div>
 
         {/* Now playing animated bars */}
-        {isCurrentTrack && isPlaying && (
+        {isCurrentTrack && isPlaying && !isBuffering && (
           <div className="absolute top-2 right-2 flex gap-0.5 items-end h-4">
             {[1, 2, 3].map((i) => (
               <span

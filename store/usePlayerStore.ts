@@ -2,11 +2,14 @@ import { create } from 'zustand'
 import type { Track } from '@/lib/api'
 
 export type RepeatMode = 'none' | 'one' | 'all'
+export type AudioQuality = 'Low' | 'Medium' | 'High' | 'Hi-Res'
 
 interface PlayerState {
   queue: Track[]
   currentIndex: number
   isPlaying: boolean
+  isBuffering: boolean
+  audioQuality: AudioQuality
   volume: number
   progress: number
   duration: number
@@ -34,6 +37,8 @@ interface PlayerActions {
   openFullPlayer: () => void
   closeFullPlayer: () => void
   setIsPlaying: (playing: boolean) => void
+  setIsBuffering: (buffering: boolean) => void
+  setAudioQuality: (quality: AudioQuality) => void
 }
 
 function buildShuffleOrder(length: number, currentIndex: number): number[] {
@@ -49,6 +54,8 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
   queue: [],
   currentIndex: -1,
   isPlaying: false,
+  isBuffering: false,
+  audioQuality: 'Hi-Res',
   volume: 0.8,
   progress: 0,
   duration: 0,
@@ -152,6 +159,8 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
   setDuration: (d) => set({ duration: d }),
   setBuffered: (b) => set({ buffered: b }),
   setIsPlaying: (playing) => set({ isPlaying: playing }),
+  setIsBuffering: (buffering) => set({ isBuffering: buffering }),
+  setAudioQuality: (quality) => set({ audioQuality: quality }),
 
   toggleShuffle: () => {
     const { queue, currentIndex } = get()

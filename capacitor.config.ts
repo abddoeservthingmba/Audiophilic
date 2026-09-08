@@ -6,6 +6,8 @@ const config: CapacitorConfig = {
   webDir: 'out',
   server: {
     androidScheme: 'https',
+    url: 'https://audiophilic-gules.vercel.app',
+    cleartext: true,
   },
   plugins: {
     CapacitorHttp: {

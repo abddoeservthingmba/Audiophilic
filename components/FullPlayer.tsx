@@ -29,6 +29,9 @@ export default function FullPlayer() {
     queue,
     currentIndex,
     isPlaying,
+    isBuffering,
+    audioQuality,
+    setAudioQuality,
     progress,
     duration,
     buffered,
@@ -60,6 +63,7 @@ export default function FullPlayer() {
   }
 
   const progressPct = totalDuration > 0 ? (progress / totalDuration) * 100 : 0
+  const qualities: ('Low' | 'Medium' | 'High' | 'Hi-Res')[] = ['Low', 'Medium', 'High', 'Hi-Res']
 
   return (
     <AnimatePresence>
@@ -112,6 +116,23 @@ export default function FullPlayer() {
           <div className="mt-6 px-8 w-full max-w-md text-center">
             <h1 className="text-2xl font-bold text-white truncate">{track.title}</h1>
             <p className="text-base text-white/50 mt-1 truncate">{track.artist}</p>
+
+            {/* Audio Quality Selector Pills */}
+            <div className="flex items-center justify-center gap-1.5 mt-3">
+              {qualities.map((q) => (
+                <button
+                  key={q}
+                  onClick={() => setAudioQuality(q)}
+                  className={`px-2.5 py-1 rounded-full text-[11px] font-bold tracking-wider uppercase transition-all ${
+                    audioQuality === q
+                      ? 'bg-red-600 text-white shadow-md shadow-red-600/30 border border-red-500'
+                      : 'bg-white/5 text-white/40 hover:bg-white/10 hover:text-white border border-white/5'
+                  }`}
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Progress scrubber */}
@@ -165,12 +186,17 @@ export default function FullPlayer() {
 
             <button
               onClick={togglePlay}
-              className="w-16 h-16 bg-red-600 text-white rounded-full flex items-center justify-center hover:bg-red-500 transition-colors shadow-lg shadow-red-600/40"
+              className="w-16 h-16 bg-red-600 text-white rounded-full flex items-center justify-center hover:bg-red-500 transition-colors shadow-lg shadow-red-600/40 overflow-hidden p-2"
               aria-label={isPlaying ? 'Pause' : 'Play'}
             >
-              {isPlaying
-                ? <Pause size={28} fill="currentColor" />
-                : <Play size={28} fill="currentColor" className="ml-1" />}
+              {isBuffering ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src="/icon.png" alt="Loading" className="w-8 h-8 object-contain animate-spin" />
+              ) : isPlaying ? (
+                <Pause size={28} fill="currentColor" />
+              ) : (
+                <Play size={28} fill="currentColor" className="ml-1" />
+              )}
             </button>
 
             <button

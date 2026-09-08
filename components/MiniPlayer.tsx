@@ -19,6 +19,9 @@ export default function MiniPlayer() {
     queue,
     currentIndex,
     isPlaying,
+    isBuffering,
+    audioQuality,
+    setAudioQuality,
     progress,
     duration,
     buffered,
@@ -63,7 +66,7 @@ export default function MiniPlayer() {
             {/* Artwork — clicking opens full player */}
             <button
               onClick={openFullPlayer}
-              className="flex-shrink-0 rounded-lg overflow-hidden w-11 h-11 focus:outline-none focus:ring-2 focus:ring-red-500"
+              className="flex-shrink-0 rounded-lg overflow-hidden w-11 h-11 focus:outline-none focus:ring-2 focus:ring-red-500 relative"
               aria-label="Open full player"
             >
               <Image
@@ -86,6 +89,18 @@ export default function MiniPlayer() {
               <p className="text-xs text-white/50 truncate leading-tight mt-0.5">{track.artist}</p>
             </button>
 
+            {/* Quality Badge */}
+            <button
+              onClick={() => {
+                const qualities: ('Low' | 'Medium' | 'High' | 'Hi-Res')[] = ['Low', 'Medium', 'High', 'Hi-Res']
+                const nextIdx = (qualities.indexOf(audioQuality) + 1) % qualities.length
+                setAudioQuality(qualities[nextIdx])
+              }}
+              className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30 transition-colors uppercase tracking-wider hidden sm:block"
+            >
+              {audioQuality}
+            </button>
+
             {/* Elapsed / Total Time */}
             <span className="text-xs text-white/50 tabular-nums hidden sm:block font-medium">
               {formatTime(progress)} / {formatTime(totalDuration)}
@@ -102,10 +117,17 @@ export default function MiniPlayer() {
               </button>
               <button
                 onClick={togglePlay}
-                className="p-2.5 bg-red-600 text-white rounded-full hover:bg-red-500 transition-colors shadow-lg shadow-red-600/30"
+                className="p-2.5 bg-red-600 text-white rounded-full hover:bg-red-500 transition-colors shadow-lg shadow-red-600/30 flex items-center justify-center w-10 h-10 overflow-hidden"
                 aria-label={isPlaying ? 'Pause' : 'Play'}
               >
-                {isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}
+                {isBuffering ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src="/icon.png" alt="Loading" className="w-5 h-5 object-contain animate-spin" />
+                ) : isPlaying ? (
+                  <Pause size={18} fill="currentColor" />
+                ) : (
+                  <Play size={18} fill="currentColor" className="ml-0.5" />
+                )}
               </button>
               <button
                 onClick={playNext}

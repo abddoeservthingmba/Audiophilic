@@ -20,6 +20,7 @@ export default function AudioController() {
     setProgress,
     setDuration,
     setIsPlaying,
+    setIsBuffering,
     playNext,
   } = usePlayerStore()
 
@@ -43,14 +44,21 @@ export default function AudioController() {
 
     engine.current.setCallbacks({
       onLoad: (dur) => {
+        setIsBuffering(false)
         if (dur > 0 && (dur >= (currentTrack.duration || 0) - 5 || (currentTrack.duration || 0) <= 0)) {
           setDuration(dur)
         }
       },
-      onEnd: () => playNext(),
+      onEnd: () => {
+        setIsBuffering(false)
+        playNext()
+      },
       onError: () => {
-        // Stop infinite skip loop: pause and do not auto-skip repeatedly
+        setIsBuffering(false)
         setIsPlaying(false)
+      },
+      onBuffering: (buffering) => {
+        setIsBuffering(buffering)
       },
       onProgress: (pos, dur) => {
         setProgress(pos)

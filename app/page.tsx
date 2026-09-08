@@ -100,14 +100,9 @@ export default function Home() {
         <div className="sticky top-0 z-40 backdrop-blur-xl bg-black/70 border-b border-white/10">
           <div className="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3">
             {/* Logo */}
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center shadow-lg shadow-purple-500/20">
-                <Music2 size={18} className="text-white" />
-              </div>
-              <div className="hidden sm:block">
-                <span className="text-base font-extrabold text-white tracking-tight leading-none block">Audiophilic</span>
-                <span className="text-[10px] text-indigo-400 tracking-wider uppercase font-bold">Zero-Ad Engine</span>
-              </div>
+            <div className="flex items-center gap-2 flex-shrink-0 cursor-pointer" onClick={() => loadTrending('All')}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/logo.png" alt="Audiophilic" className="h-7 sm:h-8 w-auto object-contain brightness-110 drop-shadow-md" />
             </div>
 
             {/* Search Bar */}
