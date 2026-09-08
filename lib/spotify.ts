@@ -1,7 +1,12 @@
 import type { Track } from './api'
 
 export const SPOTIFY_CLIENT_ID = process.env.NEXT_PUBLIC_SPOTIFY_CLIENT_ID ?? '53c752ea11d84ad9a61662a8ebc401f1'
-export const SPOTIFY_REDIRECT_URI = process.env.NEXT_PUBLIC_SPOTIFY_REDIRECT_URI ?? 'http://localhost:3000/api/auth/spotify/callback'
+
+// Auto-detects production vs localhost — no env var needed
+export const SPOTIFY_REDIRECT_URI =
+  typeof window !== 'undefined'
+    ? `${window.location.origin}/api/auth/spotify/callback`
+    : (process.env.NEXT_PUBLIC_SPOTIFY_REDIRECT_URI ?? 'http://localhost:3000/api/auth/spotify/callback')
 
 export const SPOTIFY_SCOPES = [
   'streaming',
