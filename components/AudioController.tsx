@@ -43,7 +43,9 @@ export default function AudioController() {
 
     engine.current.setCallbacks({
       onLoad: (dur) => {
-        if (dur > 0) setDuration(dur)
+        if (dur > 0 && (dur >= (currentTrack.duration || 0) - 5 || (currentTrack.duration || 0) <= 0)) {
+          setDuration(dur)
+        }
       },
       onEnd: () => playNext(),
       onError: () => {
@@ -52,12 +54,15 @@ export default function AudioController() {
       },
       onProgress: (pos, dur) => {
         setProgress(pos)
-        if (dur > 0) setDuration(dur)
-        updatePositionState(dur > 0 ? dur : currentTrack.duration, pos)
+        const finalDur = dur > 0 && dur >= (currentTrack.duration || 0) - 5 ? dur : (currentTrack.duration || dur)
+        if (dur > 0 && (dur >= (currentTrack.duration || 0) - 5 || (currentTrack.duration || 0) <= 0)) {
+          setDuration(dur)
+        }
+        updatePositionState(finalDur, pos)
       },
     })
 
-    engine.current.load(currentTrack.streamUrl)
+    engine.current.load(currentTrack.streamUrl, currentTrack.ytId)
 
     if (isPlaying) {
       engine.current.play()

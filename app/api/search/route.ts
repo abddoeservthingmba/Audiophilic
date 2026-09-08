@@ -107,6 +107,70 @@ async function searchInvidious(query: string, limit = 30): Promise<Track[]> {
   return []
 }
 
+// Direct YouTube Search Scraper for Reliable Song Results
+async function searchYouTubeDirect(query: string, limit = 30): Promise<Track[]> {
+  try {
+    const browserUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
+    const res = await fetch(`https://www.youtube.com/results?search_query=${encodeURIComponent(query + ' audio song')}`, {
+      headers: {
+        'User-Agent': browserUA,
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+      next: { revalidate: 300 },
+    })
+
+    if (!res.ok) return []
+    const html = await res.text()
+    const match = html.match(/var ytInitialData\s*=\s*({.+?});/)
+    if (!match) return []
+
+    const data = JSON.parse(match[1])
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const contents = data.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || []
+    const tracks: Track[] = []
+
+    for (const section of contents) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const items = section.itemSectionRenderer?.contents || []
+      for (const item of items) {
+        const vid = item.videoRenderer
+        if (!vid || !vid.videoId) continue
+
+        const title = vid.title?.runs?.[0]?.text || 'Unknown Title'
+        const artist = vid.ownerText?.runs?.[0]?.text || 'YouTube Music'
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const lengthText = vid.lengthText?.simpleText || vid.thumbnailOverlays?.find((o: any) => o.thumbnailOverlayTimeStatusRenderer)?.thumbnailOverlayTimeStatusRenderer?.text?.simpleText || '3:30'
+
+        const parts = lengthText.split(':').map(Number)
+        let duration = 210
+        if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+          duration = parts[0] * 60 + parts[1]
+        } else if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+          duration = parts[0] * 3600 + parts[1] * 60 + parts[2]
+        }
+
+        tracks.push({
+          id: `yt-${vid.videoId}`,
+          ytId: vid.videoId,
+          title,
+          artist,
+          album: 'YouTube Music',
+          artwork: getYtThumbnail(vid.videoId),
+          streamUrl: `/api/stream?ytId=${encodeURIComponent(vid.videoId)}`,
+          duration,
+          playCount: parseInt(vid.viewCountText?.simpleText?.replace(/[^0-9]/g, '') || '1000000'),
+          source: 'ytmusic',
+          isPreview: false,
+        })
+      }
+    }
+
+    return tracks.slice(0, limit)
+  } catch {
+    return []
+  }
+}
+
 export const FALLBACK_TRACKS: Track[] = [
   {
     id: 'yt-kJQP7kiw5Fk',
@@ -153,12 +217,14 @@ export async function GET(request: NextRequest) {
   const searchQuery = query || (genre && genre !== 'All' ? `${genre} Top Hits` : 'Top Music Hits Trending')
 
   try {
-    const [piped, invidious] = await Promise.allSettled([
+    const [direct, piped, invidious] = await Promise.allSettled([
+      searchYouTubeDirect(searchQuery, 35),
       searchPiped(searchQuery, 35),
       searchInvidious(searchQuery, 35),
     ])
 
     const results: Track[] = [
+      ...(direct.status === 'fulfilled' ? direct.value : []),
       ...(piped.status === 'fulfilled' ? piped.value : []),
       ...(invidious.status === 'fulfilled' ? invidious.value : []),
     ]
