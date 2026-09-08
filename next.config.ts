@@ -10,6 +10,16 @@ const nextConfig: NextConfig = {
       { protocol: 'https', hostname: '**.archive.org' },
       { protocol: 'https', hostname: 'www.bensound.com' },
       { protocol: 'https', hostname: 'placehold.co' },
+      // iTunes / Apple Music
+      { protocol: 'https', hostname: 'is1-ssl.mzstatic.com' },
+      { protocol: 'https', hostname: 'is2-ssl.mzstatic.com' },
+      { protocol: 'https', hostname: 'is3-ssl.mzstatic.com' },
+      { protocol: 'https', hostname: 'is4-ssl.mzstatic.com' },
+      { protocol: 'https', hostname: 'is5-ssl.mzstatic.com' },
+      { protocol: 'https', hostname: '**.mzstatic.com' },
+      // Jamendo
+      { protocol: 'https', hostname: 'usercontent.jamendo.com' },
+      { protocol: 'https', hostname: '**.jamendo.com' },
     ],
   },
   async headers() {

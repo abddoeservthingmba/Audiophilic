@@ -2,6 +2,7 @@ export interface Track {
   id: string
   title: string
   artist: string
+  album?: string
   artwork: {
     '150x150': string
     '480x480': string
@@ -10,7 +11,111 @@ export interface Track {
   streamUrl: string
   duration: number
   playCount: number
+  source: 'itunes' | 'audius' | 'jamendo' | 'fallback'
+  isPreview?: boolean // iTunes 30-sec previews
+  genre?: string
 }
+
+export type Genre = 'All' | 'Pop' | 'Hip-Hop/Rap' | 'Electronic' | 'R&B/Soul' | 'Rock' | 'Country' | 'Latin' | 'Dance'
+
+export const GENRES: Genre[] = ['All', 'Pop', 'Hip-Hop/Rap', 'Electronic', 'R&B/Soul', 'Rock', 'Country', 'Latin', 'Dance']
+
+// ─────────────────────────────────────────────────────────────────────────────
+// iTunes / Apple Music (no API key, CORS-enabled, mainstream catalog)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const ITUNES_GENRE_IDS: Record<Genre, number | null> = {
+  'All': null,
+  'Pop': 14,
+  'Hip-Hop/Rap': 18,
+  'Electronic': 7,
+  'R&B/Soul': 15,
+  'Rock': 21,
+  'Country': 6,
+  'Latin': 12,
+  'Dance': 17,
+}
+
+const ITUNES_COUNTRIES = ['us', 'gb', 'in', 'au']
+
+function itunesArtworkUrl(raw: string, size: number): string {
+  return raw.replace('100x100bb', `${size}x${size}bb`).replace('100x100', `${size}x${size}`)
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapItunesTrack(t: any): Track | null {
+  if (!t.previewUrl) return null
+  const raw = t.artworkUrl100 ?? ''
+  return {
+    id: `itunes-${t.trackId}`,
+    title: t.trackName ?? 'Unknown',
+    artist: t.artistName ?? 'Unknown',
+    album: t.collectionName,
+    artwork: {
+      '150x150': itunesArtworkUrl(raw, 150),
+      '480x480': itunesArtworkUrl(raw, 600),
+      '1000x1000': itunesArtworkUrl(raw, 1000),
+    },
+    streamUrl: t.previewUrl, // direct CDN — no proxy needed, CORS allowed
+    duration: Math.round((t.trackTimeMillis ?? 30000) / 1000),
+    playCount: 0,
+    source: 'itunes',
+    isPreview: true,
+    genre: t.primaryGenreName,
+  }
+}
+
+async function getItunesCharts(genre: Genre = 'All', limit = 50): Promise<Track[]> {
+  const genreId = ITUNES_GENRE_IDS[genre]
+  const genrePath = genreId ? `/genre-id=${genreId}/` : '/'
+
+  for (const country of ITUNES_COUNTRIES) {
+    try {
+      const url = `https://itunes.apple.com/${country}/rss/topsongs/limit=${limit}${genrePath}json`
+      const res = await fetch(url, { next: { revalidate: 3600 } })
+      if (!res.ok) continue
+      const json = await res.json()
+      // RSS feed → fetch track IDs then lookup details for previewUrl
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const entries: any[] = json?.feed?.entry ?? []
+      const ids = entries.map((e: any) => e?.id?.attributes?.['im:id']).filter(Boolean).slice(0, limit)
+      if (ids.length === 0) continue
+
+      // Batch lookup to get previewUrl
+      const lookupRes = await fetch(
+        `https://itunes.apple.com/lookup?id=${ids.join(',')}&entity=song`,
+        { next: { revalidate: 3600 } }
+      )
+      if (!lookupRes.ok) continue
+      const lookupJson = await lookupRes.json()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const tracks = (lookupJson.results ?? []).filter((r: any) => r.kind === 'song')
+      const mapped = tracks.map(mapItunesTrack).filter((t: Track | null): t is Track => t !== null)
+      if (mapped.length > 0) return mapped
+    } catch {
+      // try next country
+    }
+  }
+  return []
+}
+
+async function searchItunes(query: string, limit = 25): Promise<Track[]> {
+  try {
+    const url = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&entity=song&limit=${limit}&country=us`
+    const res = await fetch(url, { next: { revalidate: 300 } })
+    if (!res.ok) return []
+    const json = await res.json()
+    return (json.results ?? [])
+      .map(mapItunesTrack)
+      .filter((t: Track | null): t is Track => t !== null)
+  } catch {
+    return []
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Audius (full songs, independent artists)
+// ─────────────────────────────────────────────────────────────────────────────
 
 const AUDIUS_NODES = [
   'https://discovernode.audius.co',
@@ -18,83 +123,12 @@ const AUDIUS_NODES = [
   'https://audius-dp.figment.io',
 ]
 
-const APP_NAME = 'Audiophilic'
-
-// Royalty-free fallback tracks from Free Music Archive / Internet Archive
-export const FALLBACK_TRACKS: Track[] = [
-  {
-    id: 'fallback-1',
-    title: 'Acoustic Breeze',
-    artist: 'Bensound',
-    artwork: {
-      '150x150': 'https://www.bensound.com/bensound-img/acousticbreeze.jpg',
-      '480x480': 'https://www.bensound.com/bensound-img/acousticbreeze.jpg',
-      '1000x1000': 'https://www.bensound.com/bensound-img/acousticbreeze.jpg',
-    },
-    streamUrl: 'https://www.bensound.com/bensound-music/bensound-acousticbreeze.mp3',
-    duration: 222,
-    playCount: 0,
-  },
-  {
-    id: 'fallback-2',
-    title: 'Creative Minds',
-    artist: 'Bensound',
-    artwork: {
-      '150x150': 'https://www.bensound.com/bensound-img/creativeminds.jpg',
-      '480x480': 'https://www.bensound.com/bensound-img/creativeminds.jpg',
-      '1000x1000': 'https://www.bensound.com/bensound-img/creativeminds.jpg',
-    },
-    streamUrl: 'https://www.bensound.com/bensound-music/bensound-creativeminds.mp3',
-    duration: 116,
-    playCount: 0,
-  },
-  {
-    id: 'fallback-3',
-    title: 'Ukulele',
-    artist: 'Bensound',
-    artwork: {
-      '150x150': 'https://www.bensound.com/bensound-img/ukulele.jpg',
-      '480x480': 'https://www.bensound.com/bensound-img/ukulele.jpg',
-      '1000x1000': 'https://www.bensound.com/bensound-img/ukulele.jpg',
-    },
-    streamUrl: 'https://www.bensound.com/bensound-music/bensound-ukulele.mp3',
-    duration: 182,
-    playCount: 0,
-  },
-  {
-    id: 'fallback-4',
-    title: 'Sunny',
-    artist: 'Bensound',
-    artwork: {
-      '150x150': 'https://www.bensound.com/bensound-img/sunny.jpg',
-      '480x480': 'https://www.bensound.com/bensound-img/sunny.jpg',
-      '1000x1000': 'https://www.bensound.com/bensound-img/sunny.jpg',
-    },
-    streamUrl: 'https://www.bensound.com/bensound-music/bensound-sunny.mp3',
-    duration: 206,
-    playCount: 0,
-  },
-  {
-    id: 'fallback-5',
-    title: 'Relaxing',
-    artist: 'Bensound',
-    artwork: {
-      '150x150': 'https://www.bensound.com/bensound-img/relaxing.jpg',
-      '480x480': 'https://www.bensound.com/bensound-img/relaxing.jpg',
-      '1000x1000': 'https://www.bensound.com/bensound-img/relaxing.jpg',
-    },
-    streamUrl: 'https://www.bensound.com/bensound-music/bensound-relaxing.mp3',
-    duration: 291,
-    playCount: 0,
-  },
-]
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapAudiusTrack(t: any): Track {
   const artwork = t.artwork ?? {}
-  const placeholder = `https://placehold.co/480x480/1a1a2e/white?text=${encodeURIComponent(t.title?.charAt(0) ?? 'A')}`
+  const placeholder = `https://placehold.co/480x480/1a1a2e/ffffff?text=${encodeURIComponent((t.title ?? 'A').charAt(0))}`
   return {
-    id: t.id,
+    id: `audius-${t.id}`,
     title: t.title ?? 'Unknown Title',
     artist: t.user?.name ?? 'Unknown Artist',
     artwork: {
@@ -102,52 +136,178 @@ function mapAudiusTrack(t: any): Track {
       '480x480': artwork['480x480'] ?? placeholder,
       '1000x1000': artwork['1000x1000'] ?? placeholder,
     },
-    streamUrl: getStreamUrl(t.id),
+    streamUrl: `/api/stream?id=${encodeURIComponent(t.id)}`,
     duration: t.duration ?? 0,
     playCount: t.play_count ?? 0,
+    source: 'audius',
+    isPreview: false,
   }
 }
 
-async function fetchFromAudius<T>(path: string): Promise<T> {
-  const errors: unknown[] = []
+async function getAudiusTrending(genre = 'All', limit = 25): Promise<Track[]> {
   for (const node of AUDIUS_NODES) {
     try {
-      const url = `${node}${path}&app_name=${APP_NAME}`
-      const res = await fetch(url, {
-        next: { revalidate: 300 },
-        headers: { Accept: 'application/json' },
-      })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const g = genre === 'All' ? 'All' : genre
+      const url = `${node}/v1/tracks/trending?limit=${limit}&genre=${encodeURIComponent(g)}&time=week&app_name=Audiophilic`
+      const res = await fetch(url, { next: { revalidate: 300 }, headers: { Accept: 'application/json' } })
+      if (!res.ok) continue
       const json = await res.json()
-      return json.data as T
-    } catch (e) {
-      errors.push(e)
+      if (!Array.isArray(json.data) || json.data.length === 0) continue
+      return json.data.map(mapAudiusTrack)
+    } catch {
+      // try next node
     }
   }
-  throw new AggregateError(errors, 'All Audius nodes failed')
+  return []
 }
 
+async function searchAudius(query: string, limit = 20): Promise<Track[]> {
+  for (const node of AUDIUS_NODES) {
+    try {
+      const url = `${node}/v1/tracks/search?query=${encodeURIComponent(query)}&limit=${limit}&app_name=Audiophilic`
+      const res = await fetch(url, { next: { revalidate: 120 }, headers: { Accept: 'application/json' } })
+      if (!res.ok) continue
+      const json = await res.json()
+      if (!Array.isArray(json.data)) continue
+      return json.data.map(mapAudiusTrack)
+    } catch {
+      // try next node
+    }
+  }
+  return []
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Jamendo (free full songs, Creative Commons)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapJamendoTrack(t: any): Track {
+  const art = t.album_image ?? `https://placehold.co/480x480/1a1a2e/ffffff?text=${encodeURIComponent((t.name ?? 'J').charAt(0))}`
+  return {
+    id: `jamendo-${t.id}`,
+    title: t.name ?? 'Unknown',
+    artist: t.artist_name ?? 'Unknown',
+    album: t.album_name,
+    artwork: {
+      '150x150': art,
+      '480x480': art,
+      '1000x1000': art,
+    },
+    streamUrl: t.audio ?? t.audiodownload ?? '',
+    duration: t.duration ?? 0,
+    playCount: t.listens ?? 0,
+    source: 'jamendo',
+    isPreview: false,
+    genre: t.musicinfo?.tags?.genres?.[0],
+  }
+}
+
+async function getJamendoTrending(limit = 20): Promise<Track[]> {
+  try {
+    const url = `https://api.jamendo.com/v3.0/tracks/?client_id=b6747d04&format=json&limit=${limit}&order=popularity_total&include=musicinfo&imagesize=500`
+    const res = await fetch(url, { next: { revalidate: 3600 } })
+    if (!res.ok) return []
+    const json = await res.json()
+    return (json.results ?? [])
+      .filter((t: any) => t.audio) // eslint-disable-line @typescript-eslint/no-explicit-any
+      .map(mapJamendoTrack)
+  } catch {
+    return []
+  }
+}
+
+async function searchJamendo(query: string, limit = 15): Promise<Track[]> {
+  try {
+    const url = `https://api.jamendo.com/v3.0/tracks/?client_id=b6747d04&format=json&limit=${limit}&search=${encodeURIComponent(query)}&include=musicinfo&imagesize=500`
+    const res = await fetch(url, { next: { revalidate: 120 } })
+    if (!res.ok) return []
+    const json = await res.json()
+    return (json.results ?? [])
+      .filter((t: any) => t.audio) // eslint-disable-line @typescript-eslint/no-explicit-any
+      .map(mapJamendoTrack)
+  } catch {
+    return []
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Fallback tracks
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const FALLBACK_TRACKS: Track[] = [
+  {
+    id: 'fallback-1', title: 'Acoustic Breeze', artist: 'Bensound', source: 'fallback', isPreview: false, playCount: 0, duration: 222,
+    artwork: { '150x150': 'https://www.bensound.com/bensound-img/acousticbreeze.jpg', '480x480': 'https://www.bensound.com/bensound-img/acousticbreeze.jpg', '1000x1000': 'https://www.bensound.com/bensound-img/acousticbreeze.jpg' },
+    streamUrl: 'https://www.bensound.com/bensound-music/bensound-acousticbreeze.mp3',
+  },
+  {
+    id: 'fallback-2', title: 'Creative Minds', artist: 'Bensound', source: 'fallback', isPreview: false, playCount: 0, duration: 116,
+    artwork: { '150x150': 'https://www.bensound.com/bensound-img/creativeminds.jpg', '480x480': 'https://www.bensound.com/bensound-img/creativeminds.jpg', '1000x1000': 'https://www.bensound.com/bensound-img/creativeminds.jpg' },
+    streamUrl: 'https://www.bensound.com/bensound-music/bensound-creativeminds.mp3',
+  },
+  {
+    id: 'fallback-3', title: 'Sunny', artist: 'Bensound', source: 'fallback', isPreview: false, playCount: 0, duration: 206,
+    artwork: { '150x150': 'https://www.bensound.com/bensound-img/sunny.jpg', '480x480': 'https://www.bensound.com/bensound-img/sunny.jpg', '1000x1000': 'https://www.bensound.com/bensound-img/sunny.jpg' },
+    streamUrl: 'https://www.bensound.com/bensound-music/bensound-sunny.mp3',
+  },
+]
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Public API
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function getTrendingTracks(genre: Genre = 'All', limit = 50): Promise<Track[]> {
+  const [itunes, audius, jamendo] = await Promise.allSettled([
+    getItunesCharts(genre, Math.min(limit, 50)),
+    getAudiusTrending(genre, 20),
+    genre === 'All' ? getJamendoTrending(15) : Promise.resolve([]),
+  ])
+
+  const all: Track[] = [
+    ...(itunes.status === 'fulfilled' ? itunes.value : []),
+    ...(audius.status === 'fulfilled' ? audius.value : []),
+    ...(jamendo.status === 'fulfilled' ? jamendo.value : []),
+  ]
+
+  if (all.length === 0) return FALLBACK_TRACKS
+  // Deduplicate by title+artist (case-insensitive)
+  const seen = new Set<string>()
+  return all.filter((t) => {
+    const key = `${t.title.toLowerCase()}::${t.artist.toLowerCase()}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+export async function searchTracks(query: string, limit = 50): Promise<Track[]> {
+  if (!query.trim()) return getTrendingTracks('All', limit)
+
+  const [itunes, audius, jamendo] = await Promise.allSettled([
+    searchItunes(query, 25),
+    searchAudius(query, 20),
+    searchJamendo(query, 15),
+  ])
+
+  const all: Track[] = [
+    ...(itunes.status === 'fulfilled' ? itunes.value : []),
+    ...(audius.status === 'fulfilled' ? audius.value : []),
+    ...(jamendo.status === 'fulfilled' ? jamendo.value : []),
+  ]
+
+  if (all.length === 0) return FALLBACK_TRACKS
+
+  const seen = new Set<string>()
+  return all.filter((t) => {
+    const key = `${t.title.toLowerCase()}::${t.artist.toLowerCase()}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+// Keep old export for compatibility
 export function getStreamUrl(trackId: string): string {
   return `/api/stream?id=${encodeURIComponent(trackId)}`
-}
-
-export async function getTrendingTracks(limit = 20): Promise<Track[]> {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const data = await fetchFromAudius<any[]>(`/v1/tracks/trending?limit=${limit}&genre=All&time=week`)
-    return Array.isArray(data) ? data.map(mapAudiusTrack) : FALLBACK_TRACKS
-  } catch {
-    return FALLBACK_TRACKS
-  }
-}
-
-export async function searchTracks(query: string, limit = 20): Promise<Track[]> {
-  if (!query.trim()) return getTrendingTracks(limit)
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const data = await fetchFromAudius<any[]>(`/v1/tracks/search?query=${encodeURIComponent(query)}&limit=${limit}`)
-    return Array.isArray(data) ? data.map(mapAudiusTrack) : FALLBACK_TRACKS
-  } catch {
-    return FALLBACK_TRACKS
-  }
 }

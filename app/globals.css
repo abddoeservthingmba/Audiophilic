@@ -72,6 +72,10 @@ input[type="range"]::-moz-range-track {
   -webkit-user-select: none;
 }
 
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+
 /* Safe area for mobile notch */
 .pt-safe {
   padding-top: env(safe-area-inset-top, 0px);
