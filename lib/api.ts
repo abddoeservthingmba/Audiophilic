@@ -11,7 +11,7 @@ export interface Track {
   streamUrl: string
   duration: number
   playCount: number
-  source: 'itunes' | 'audius' | 'jamendo' | 'fallback'
+  source: 'itunes' | 'audius' | 'jamendo' | 'fallback' | 'spotify'
   isPreview?: boolean // iTunes 30-sec previews
   genre?: string
 }

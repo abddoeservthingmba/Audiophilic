@@ -9,6 +9,7 @@ import {
   setMediaSessionPlaybackState,
 } from '@/lib/mediaSession'
 import { usePlayerStore } from '@/store/usePlayerStore'
+import { useSpotify } from '@/components/SpotifyProvider'
 
 export default function AudioController() {
   const {
@@ -21,78 +22,90 @@ export default function AudioController() {
     setDuration,
     setIsPlaying,
     playNext,
-    playPrev,
-    setQueue,
   } = usePlayerStore()
 
+  const spotify = useSpotify()
   const engine = useRef(getAudioEngine())
   const lastTrackId = useRef<string | null>(null)
-  const seekPendingRef = useRef<number | null>(null)
+  const isSpotifyTrack = (id: string) => id.startsWith('spotify-')
 
   const currentTrack = currentIndex >= 0 ? queue[currentIndex] : null
 
-  // Load track when currentIndex changes
+  // ── Load / switch track ────────────────────────────────────────────────────
   useEffect(() => {
     if (!currentTrack) return
     if (currentTrack.id === lastTrackId.current) return
     lastTrackId.current = currentTrack.id
 
-    engine.current.setCallbacks({
-      onLoad: (duration) => {
-        setDuration(duration)
-        if (seekPendingRef.current !== null) {
-          engine.current.seek(seekPendingRef.current)
-          seekPendingRef.current = null
-        }
-      },
-      onEnd: () => {
-        playNext()
-      },
-      onError: () => {
-        // Auto-advance on unrecoverable error
-        setTimeout(() => playNext(), 1500)
-      },
-      onProgress: (pos, dur) => {
-        setProgress(pos)
-        updatePositionState(dur, pos)
-      },
-    })
-
-    engine.current.load(currentTrack.streamUrl)
     updateMediaSession(currentTrack)
-  }, [currentTrack, playNext, setDuration, setProgress])
 
-  // Play / pause
+    if (isSpotifyTrack(currentTrack.id)) {
+      // Stop Howler, hand off to Spotify SDK
+      engine.current.stop()
+      if (isPlaying && spotify.isReady) {
+        spotify.playTrack(currentTrack.streamUrl)
+      }
+    } else {
+      // Stop any Spotify playback, use Howler
+      if (spotify.isLoggedIn) spotify.pause()
+
+      engine.current.setCallbacks({
+        onLoad: (dur) => setDuration(dur),
+        onEnd: () => playNext(),
+        onError: () => setTimeout(() => playNext(), 1500),
+        onProgress: (pos, dur) => {
+          setProgress(pos)
+          updatePositionState(dur, pos)
+        },
+      })
+      engine.current.load(currentTrack.streamUrl)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTrack])
+
+  // ── Play / pause ───────────────────────────────────────────────────────────
   useEffect(() => {
     if (!currentTrack) return
-    if (isPlaying) {
-      engine.current.play()
-      setMediaSessionPlaybackState('playing')
+
+    if (isSpotifyTrack(currentTrack.id)) {
+      if (isPlaying) {
+        if (spotify.isReady) spotify.resume()
+        setMediaSessionPlaybackState('playing')
+      } else {
+        spotify.pause()
+        setMediaSessionPlaybackState('paused')
+      }
     } else {
-      engine.current.pause()
-      setMediaSessionPlaybackState('paused')
+      if (isPlaying) {
+        engine.current.play()
+        setMediaSessionPlaybackState('playing')
+      } else {
+        engine.current.pause()
+        setMediaSessionPlaybackState('paused')
+      }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPlaying, currentTrack])
 
-  // Seek when user scrubs
+  // ── Seek (non-Spotify only) ────────────────────────────────────────────────
   const storeProgress = usePlayerStore((s) => s.progress)
   const enginePos = engine.current.position()
-  const scrubDelta = Math.abs(storeProgress - enginePos)
 
   useEffect(() => {
-    // Only seek if user explicitly changed progress (delta > 1.5s and engine is loaded)
-    if (scrubDelta > 1.5 && engine.current.duration() > 0) {
-      engine.current.seek(storeProgress)
+    if (currentTrack && !isSpotifyTrack(currentTrack.id)) {
+      if (Math.abs(storeProgress - enginePos) > 1.5 && engine.current.duration() > 0) {
+        engine.current.seek(storeProgress)
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storeProgress])
 
-  // Volume sync
+  // ── Volume ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     engine.current.volume(volume)
   }, [volume])
 
-  // Media session handlers
+  // ── Media session handlers ─────────────────────────────────────────────────
   useEffect(() => {
     setMediaSessionHandlers({
       onPlay: () => usePlayerStore.getState().setIsPlaying(true),
@@ -100,8 +113,10 @@ export default function AudioController() {
       onNextTrack: () => usePlayerStore.getState().playNext(),
       onPreviousTrack: () => usePlayerStore.getState().playPrev(),
       onSeekTo: (time) => {
-        usePlayerStore.getState().setProgress(time)
-        engine.current.seek(time)
+        if (currentTrack && !isSpotifyTrack(currentTrack.id)) {
+          usePlayerStore.getState().setProgress(time)
+          engine.current.seek(time)
+        }
       },
       onSeekBackward: (offset) => {
         const pos = engine.current.position()
@@ -118,18 +133,16 @@ export default function AudioController() {
       },
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [currentTrack])
 
-  // Cleanup
+  // ── Cleanup ────────────────────────────────────────────────────────────────
   useEffect(() => {
     const eng = engine.current
-    return () => {
-      eng.destroy()
-    }
+    return () => { eng.destroy() }
   }, [])
 
-  // Suppress unused var warning — setQueue used by page
-  void setQueue
+  // suppress unused
+  void setIsPlaying
 
   return null
 }

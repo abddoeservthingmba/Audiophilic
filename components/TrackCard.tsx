@@ -12,6 +12,7 @@ interface TrackCardProps {
 }
 
 const SOURCE_BADGE: Record<string, { label: string; color: string }> = {
+  spotify: { label: '💚', color: 'bg-[#1db954]/80' },
   itunes:  { label: '🍎', color: 'bg-pink-500/80' },
   audius:  { label: '🎵', color: 'bg-purple-500/80' },
   jamendo: { label: '🎸', color: 'bg-green-500/80' },
