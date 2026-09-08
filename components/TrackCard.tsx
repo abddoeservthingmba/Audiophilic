@@ -11,15 +11,8 @@ interface TrackCardProps {
   allTracks: Track[]
 }
 
-const SOURCE_BADGE: Record<string, { label: string; color: string }> = {
-  deezer:  { label: '🎧', color: 'bg-amber-500/80 text-black font-extrabold' },
-  itunes:  { label: '🍎', color: 'bg-pink-500/80' },
-  audius:  { label: '🎵', color: 'bg-purple-500/80' },
-  jamendo: { label: '🎸', color: 'bg-green-500/80' },
-  fallback:{ label: '♪',  color: 'bg-zinc-500/80' },
-}
-
 function formatCount(n: number): string {
+  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)}B`
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
   if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`
   return n > 0 ? n.toString() : ''
@@ -35,7 +28,6 @@ function formatDuration(s: number): string {
 export default function TrackCard({ track, index, allTracks }: TrackCardProps) {
   const { setQueue, playTrack, currentIndex, queue, isPlaying } = usePlayerStore()
   const isCurrentTrack = queue[currentIndex]?.id === track.id
-  const badge = SOURCE_BADGE[track.source] ?? SOURCE_BADGE.fallback
 
   function handlePlay() {
     setQueue(allTracks, index)
@@ -47,8 +39,8 @@ export default function TrackCard({ track, index, allTracks }: TrackCardProps) {
       onClick={handlePlay}
       className={`group relative flex flex-col rounded-xl overflow-hidden text-left w-full
         transition-all duration-200 hover:scale-[1.03] hover:shadow-2xl hover:shadow-black/60
-        focus:outline-none focus:ring-2 focus:ring-indigo-500
-        ${isCurrentTrack ? 'ring-2 ring-indigo-500 shadow-xl shadow-indigo-500/20' : ''}`}
+        focus:outline-none focus:ring-2 focus:ring-red-500
+        ${isCurrentTrack ? 'ring-2 ring-red-500 shadow-xl shadow-red-500/20' : ''}`}
       aria-label={`Play ${track.title} by ${track.artist}`}
     >
       {/* Artwork */}
@@ -66,23 +58,23 @@ export default function TrackCard({ track, index, allTracks }: TrackCardProps) {
         <div className={`absolute inset-0 flex items-center justify-center bg-black/40
           transition-opacity duration-200
           ${isCurrentTrack && isPlaying ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-          <div className="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center shadow-lg transform group-hover:scale-110 transition-transform">
-            <Play size={20} fill="black" className="text-black ml-0.5" />
+          <div className="w-12 h-12 rounded-full bg-red-600 flex items-center justify-center shadow-lg transform group-hover:scale-110 transition-transform">
+            <Play size={20} fill="white" className="text-white ml-0.5" />
           </div>
         </div>
 
-        {/* Source badge */}
-        <div className={`absolute top-2 left-2 text-xs px-1.5 py-0.5 rounded-md font-bold backdrop-blur-sm ${badge.color}`}>
-          {badge.label}
+        {/* YT Music Source badge */}
+        <div className="absolute top-2 left-2 text-[11px] px-2 py-0.5 rounded-full font-extrabold bg-red-600/90 text-white backdrop-blur-sm shadow flex items-center gap-1">
+          <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" /> YT Music
         </div>
 
-        {/* Now playing bars */}
+        {/* Now playing animated bars */}
         {isCurrentTrack && isPlaying && (
           <div className="absolute top-2 right-2 flex gap-0.5 items-end h-4">
             {[1, 2, 3].map((i) => (
               <span
                 key={i}
-                className="w-0.5 bg-indigo-400 rounded-full"
+                className="w-0.5 bg-red-400 rounded-full"
                 style={{
                   height: `${40 + i * 20}%`,
                   animation: 'pulse 0.8s ease-in-out infinite alternate',
@@ -96,13 +88,10 @@ export default function TrackCard({ track, index, allTracks }: TrackCardProps) {
 
       {/* Info */}
       <div className="px-3 py-2.5 bg-white/5 flex-1 min-w-0">
-        <p className="text-sm font-semibold text-white truncate leading-tight">{track.title}</p>
+        <p className="text-sm font-semibold text-white truncate leading-tight group-hover:text-red-300 transition-colors">{track.title}</p>
         <p className="text-xs text-white/50 truncate mt-0.5">{track.artist}</p>
-        {track.album && (
-          <p className="text-xs text-white/25 truncate mt-0.5">{track.album}</p>
-        )}
         <div className="flex items-center justify-between mt-1.5 text-xs text-white/25">
-          {track.playCount > 0 && <span>{formatCount(track.playCount)}</span>}
+          {track.playCount > 0 ? <span>{formatCount(track.playCount)} views</span> : <span />}
           {track.duration > 0 && <span>{formatDuration(track.duration)}</span>}
         </div>
       </div>

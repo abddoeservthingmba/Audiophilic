@@ -1,6 +1,6 @@
 import type { NextRequest } from 'next/server'
 
-const PIPED_INSTANCES = [
+const PIPED_NODES = [
   'https://pipedapi.kavin.rocks',
   'https://api.piped.video',
   'https://pipedapi.adminforge.de',
@@ -8,33 +8,15 @@ const PIPED_INSTANCES = [
   'https://pipedapi.drgns.space',
 ]
 
-const INVIDIOUS_INSTANCES = [
+const INVIDIOUS_NODES = [
   'https://yewtu.be',
   'https://inv.tux.pizza',
   'https://vid.puffyan.us',
 ]
 
-const AUDIUS_NODES = [
-  'https://discovernode.audius.co',
-  'https://discovery-a.audius.co',
-  'https://audius-dp.figment.io',
-]
-
-// Query Piped instance for track stream
-async function queryPipedStream(instance: string, query: string, signal: AbortSignal): Promise<string | null> {
+async function queryPipedAudio(instance: string, ytId: string, signal: AbortSignal): Promise<string | null> {
   try {
-    const searchRes = await fetch(`${instance}/search?q=${encodeURIComponent(query)}&filter=music_songs`, {
-      signal,
-      headers: { 'User-Agent': 'Audiophilic/1.0' },
-    })
-    if (!searchRes.ok) return null
-    const json = await searchRes.json()
-    const items = json.items ?? []
-    if (items.length === 0 || !items[0].url) return null
-    const videoId = items[0].url.replace('/watch?v=', '')
-    if (!videoId) return null
-
-    const streamRes = await fetch(`${instance}/streams/${videoId}`, {
+    const streamRes = await fetch(`${instance}/streams/${ytId}`, {
       signal,
       headers: { 'User-Agent': 'Audiophilic/1.0' },
     })
@@ -50,19 +32,9 @@ async function queryPipedStream(instance: string, query: string, signal: AbortSi
   }
 }
 
-// Query Invidious instance for track stream
-async function queryInvidiousStream(instance: string, query: string, signal: AbortSignal): Promise<string | null> {
+async function queryInvidiousAudio(instance: string, ytId: string, signal: AbortSignal): Promise<string | null> {
   try {
-    const searchRes = await fetch(`${instance}/api/v1/search?q=${encodeURIComponent(query)}&type=video`, {
-      signal,
-      headers: { 'User-Agent': 'Audiophilic/1.0' },
-    })
-    if (!searchRes.ok) return null
-    const json = await searchRes.json()
-    if (!Array.isArray(json) || json.length === 0 || !json[0].videoId) return null
-    const videoId = json[0].videoId
-
-    const vidRes = await fetch(`${instance}/api/v1/videos/${videoId}`, {
+    const vidRes = await fetch(`${instance}/api/v1/videos/${ytId}`, {
       signal,
       headers: { 'User-Agent': 'Audiophilic/1.0' },
     })
@@ -80,21 +52,20 @@ async function queryInvidiousStream(instance: string, query: string, signal: Abo
   }
 }
 
-// Parallel race across instances with strict 3 second overall timeout
-async function resolveFastFullStream(query: string): Promise<string | null> {
+async function resolveDirectYtAudio(ytId: string): Promise<string | null> {
   const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), 3000)
+  const timeoutId = setTimeout(() => controller.abort(), 3500)
 
   try {
-    const pipedPromises = PIPED_INSTANCES.map((inst) =>
-      queryPipedStream(inst, query, controller.signal).then((url) => {
+    const pipedPromises = PIPED_NODES.map((node) =>
+      queryPipedAudio(node, ytId, controller.signal).then((url) => {
         if (!url) throw new Error('No stream')
         return url
       })
     )
 
-    const invidiousPromises = INVIDIOUS_INSTANCES.map((inst) =>
-      queryInvidiousStream(inst, query, controller.signal).then((url) => {
+    const invidiousPromises = INVIDIOUS_NODES.map((node) =>
+      queryInvidiousAudio(node, ytId, controller.signal).then((url) => {
         if (!url) throw new Error('No stream')
         return url
       })
@@ -111,48 +82,15 @@ async function resolveFastFullStream(query: string): Promise<string | null> {
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl
-  const q = searchParams.get('q')
-  const fallbackUrl = searchParams.get('fallback')
-  const id = searchParams.get('id')
+  const ytId = searchParams.get('ytId')
 
-  // Step 1: Try fast parallel Piped/Invidious resolution (Max 3s)
-  if (q) {
-    const fullStreamUrl = await resolveFastFullStream(q)
-    if (fullStreamUrl) {
-      // Redirect directly to the high-speed direct audio CDN URL
-      return Response.redirect(fullStreamUrl, 302)
+  if (ytId) {
+    const audioUrl = await resolveDirectYtAudio(ytId)
+    if (audioUrl) {
+      return Response.redirect(audioUrl, 302)
     }
   }
 
-  // Step 2: Fallback stream redirect if provided
-  if (fallbackUrl) {
-    return Response.redirect(fallbackUrl, 302)
-  }
-
-  // Step 3: Audius stream lookup
-  if (id) {
-    for (const node of AUDIUS_NODES) {
-      try {
-        const streamRes = await fetch(`${node}/v1/tracks/${id}/stream?app_name=Audiophilic`, {
-          redirect: 'follow',
-          headers: { 'User-Agent': 'Audiophilic/1.0' },
-        })
-        if (streamRes.ok) {
-          return new Response(streamRes.body, {
-            status: 200,
-            headers: {
-              'Content-Type': streamRes.headers.get('Content-Type') ?? 'audio/mpeg',
-              'Access-Control-Allow-Origin': '*',
-              'Cache-Control': 'public, max-age=3600',
-            },
-          })
-        }
-      } catch {
-        // try next
-      }
-    }
-  }
-
-  // Step 4: Final safe response — redirect to royalty free audio (Never 502)
+  // Safe fallback audio (never 502)
   return Response.redirect('https://www.bensound.com/bensound-music/bensound-acousticbreeze.mp3', 302)
 }
