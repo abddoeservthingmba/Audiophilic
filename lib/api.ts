@@ -11,7 +11,7 @@ export interface Track {
   streamUrl: string
   duration: number
   playCount: number
-  source: 'deezer' | 'itunes' | 'audius' | 'jamendo' | 'fallback'
+  source: 'piped' | 'deezer' | 'itunes' | 'audius' | 'jamendo' | 'fallback'
   isPreview?: boolean
   genre?: string
 }
@@ -21,28 +21,29 @@ export type Genre = 'All' | 'Pop' | 'Hip-Hop/Rap' | 'Electronic' | 'R&B/Soul' | 
 export const GENRES: Genre[] = ['All', 'Pop', 'Hip-Hop/Rap', 'Electronic', 'R&B/Soul', 'Rock', 'Country', 'Latin', 'Dance']
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Deezer Music (Global Charts & Search - No API key needed)
+// Deezer Charts & Search (Metadata + Full Piped stream resolution)
 // ─────────────────────────────────────────────────────────────────────────────
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapDeezerTrack(t: any): Track | null {
-  if (!t.preview && !t.link) return null
+  if (!t.title || !t.artist?.name) return null
   const cover = t.album?.cover_medium ?? t.album?.cover_big ?? `https://placehold.co/480x480/1a1a2e/ffffff?text=${encodeURIComponent((t.title ?? 'D').charAt(0))}`
   return {
     id: `deezer-${t.id}`,
-    title: t.title ?? 'Unknown',
-    artist: t.artist?.name ?? 'Unknown',
+    title: t.title,
+    artist: t.artist.name,
     album: t.album?.title,
     artwork: {
       '150x150': t.album?.cover_small ?? cover,
       '480x480': t.album?.cover_big ?? cover,
       '1000x1000': t.album?.cover_xl ?? cover,
     },
-    streamUrl: t.preview,
-    duration: t.duration ?? 30,
+    // Stream full song via Piped/Invidious query proxy!
+    streamUrl: `/api/stream?q=${encodeURIComponent(`${t.title} ${t.artist.name}`)}`,
+    duration: t.duration ?? 210,
     playCount: t.rank ?? 0,
     source: 'deezer',
-    isPreview: true,
+    isPreview: false,
   }
 }
 
@@ -71,7 +72,7 @@ async function searchDeezer(query: string, limit = 25): Promise<Track[]> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// iTunes / Apple Music (Top Charts & Search)
+// iTunes / Apple Music (Top Charts & Search + Full Piped stream resolution)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const ITUNES_GENRE_IDS: Record<Genre, number | null> = {
@@ -94,23 +95,24 @@ function itunesArtworkUrl(raw: string, size: number): string {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapItunesTrack(t: any): Track | null {
-  if (!t.previewUrl) return null
+  if (!t.trackName || !t.artistName) return null
   const raw = t.artworkUrl100 ?? ''
   return {
     id: `itunes-${t.trackId}`,
-    title: t.trackName ?? 'Unknown',
-    artist: t.artistName ?? 'Unknown',
+    title: t.trackName,
+    artist: t.artistName,
     album: t.collectionName,
     artwork: {
       '150x150': itunesArtworkUrl(raw, 150),
       '480x480': itunesArtworkUrl(raw, 600),
       '1000x1000': itunesArtworkUrl(raw, 1000),
     },
-    streamUrl: t.previewUrl,
-    duration: Math.round((t.trackTimeMillis ?? 30000) / 1000),
+    // Stream full song via Piped/Invidious query proxy!
+    streamUrl: `/api/stream?q=${encodeURIComponent(`${t.trackName} ${t.artistName}`)}`,
+    duration: Math.round((t.trackTimeMillis ?? 210000) / 1000),
     playCount: 0,
     source: 'itunes',
-    isPreview: true,
+    isPreview: false,
     genre: t.primaryGenreName,
   }
 }
@@ -162,7 +164,7 @@ async function searchItunes(query: string, limit = 25): Promise<Track[]> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Audius (Full-length stream tracks)
+// Audius (Full-length streams)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const AUDIUS_NODES = [
@@ -226,7 +228,7 @@ async function searchAudius(query: string, limit = 20): Promise<Track[]> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Jamendo (Full-length CC tracks)
+// Jamendo (Full-length streams)
 // ─────────────────────────────────────────────────────────────────────────────
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
