@@ -19,6 +19,7 @@ export default function AudioController() {
     progress,
     setProgress,
     setDuration,
+    setIsPlaying,
     playNext,
   } = usePlayerStore()
 
@@ -33,18 +34,34 @@ export default function AudioController() {
     if (currentTrack.id === lastTrackId.current) return
     lastTrackId.current = currentTrack.id
 
+    // Set initial duration from metadata immediately (never blank or 0:00)
+    if (currentTrack.duration > 0) {
+      setDuration(currentTrack.duration)
+    }
+
     updateMediaSession(currentTrack)
 
     engine.current.setCallbacks({
-      onLoad: (dur) => setDuration(dur),
+      onLoad: (dur) => {
+        if (dur > 0) setDuration(dur)
+      },
       onEnd: () => playNext(),
-      onError: () => setTimeout(() => playNext(), 1500),
+      onError: () => {
+        // Stop infinite skip loop: pause and do not auto-skip repeatedly
+        setIsPlaying(false)
+      },
       onProgress: (pos, dur) => {
         setProgress(pos)
-        updatePositionState(dur, pos)
+        if (dur > 0) setDuration(dur)
+        updatePositionState(dur > 0 ? dur : currentTrack.duration, pos)
       },
     })
+
     engine.current.load(currentTrack.streamUrl)
+
+    if (isPlaying) {
+      engine.current.play()
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTrack])
 
@@ -60,7 +77,7 @@ export default function AudioController() {
       setMediaSessionPlaybackState('paused')
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPlaying, currentTrack])
+  }, [isPlaying])
 
   // ── Seek ───────────────────────────────────────────────────────────────────
   const storeProgress = usePlayerStore((s) => s.progress)

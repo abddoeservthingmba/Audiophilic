@@ -36,3 +36,4 @@ export async function GET(request: NextRequest) {
     return Response.redirect('https://placehold.co/480x480/1a1a2e/ffffff?text=Music', 302)
   }
 }
+

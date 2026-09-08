@@ -29,8 +29,9 @@ export default function MiniPlayer() {
   } = usePlayerStore()
 
   const track = currentIndex >= 0 ? queue[currentIndex] : null
-  const progressPct = duration > 0 ? (progress / duration) * 100 : 0
-  const bufferedPct = duration > 0 ? (buffered / duration) * 100 : 0
+  const totalDuration = duration > 0 ? duration : (track?.duration ?? 0)
+  const progressPct = totalDuration > 0 ? (progress / totalDuration) * 100 : 0
+  const bufferedPct = totalDuration > 0 ? (buffered / totalDuration) * 100 : 0
 
   return (
     <AnimatePresence>
@@ -44,7 +45,7 @@ export default function MiniPlayer() {
           className="fixed bottom-0 left-0 right-0 z-50 select-none"
         >
           {/* Progress bar at top */}
-          <div className="relative h-0.5 bg-white/10 overflow-hidden">
+          <div className="relative h-1 bg-white/10 overflow-hidden">
             {/* Buffered */}
             <div
               className="absolute inset-y-0 left-0 bg-white/20 transition-all duration-300"
@@ -52,17 +53,17 @@ export default function MiniPlayer() {
             />
             {/* Played */}
             <div
-              className="absolute inset-y-0 left-0 bg-indigo-400 transition-all duration-300"
+              className="absolute inset-y-0 left-0 bg-red-500 transition-all duration-300"
               style={{ width: `${progressPct}%` }}
             />
           </div>
 
           {/* Player body */}
-          <div className="flex items-center gap-3 px-4 py-3 backdrop-blur-xl bg-black/70 border-t border-white/10">
+          <div className="flex items-center gap-3 px-4 py-3 backdrop-blur-xl bg-black/80 border-t border-white/10">
             {/* Artwork — clicking opens full player */}
             <button
               onClick={openFullPlayer}
-              className="flex-shrink-0 rounded-lg overflow-hidden w-11 h-11 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="flex-shrink-0 rounded-lg overflow-hidden w-11 h-11 focus:outline-none focus:ring-2 focus:ring-red-500"
               aria-label="Open full player"
             >
               <Image
@@ -85,9 +86,9 @@ export default function MiniPlayer() {
               <p className="text-xs text-white/50 truncate leading-tight mt-0.5">{track.artist}</p>
             </button>
 
-            {/* Time */}
-            <span className="text-xs text-white/40 tabular-nums hidden sm:block">
-              {formatTime(progress)}
+            {/* Elapsed / Total Time */}
+            <span className="text-xs text-white/50 tabular-nums hidden sm:block font-medium">
+              {formatTime(progress)} / {formatTime(totalDuration)}
             </span>
 
             {/* Controls */}
@@ -101,7 +102,7 @@ export default function MiniPlayer() {
               </button>
               <button
                 onClick={togglePlay}
-                className="p-2.5 bg-white text-black rounded-full hover:bg-white/90 transition-colors"
+                className="p-2.5 bg-red-600 text-white rounded-full hover:bg-red-500 transition-colors shadow-lg shadow-red-600/30"
                 aria-label={isPlaying ? 'Pause' : 'Play'}
               >
                 {isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}

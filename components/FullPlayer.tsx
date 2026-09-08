@@ -47,6 +47,7 @@ export default function FullPlayer() {
   } = usePlayerStore()
 
   const track = currentIndex >= 0 ? queue[currentIndex] : null
+  const totalDuration = duration > 0 ? duration : (track?.duration ?? 0)
 
   function handleScrub(e: React.ChangeEvent<HTMLInputElement>) {
     const newPos = parseFloat(e.target.value)
@@ -58,7 +59,7 @@ export default function FullPlayer() {
     setVolume(parseFloat(e.target.value))
   }
 
-  const progressPct = duration > 0 ? (progress / duration) * 100 : 0
+  const progressPct = totalDuration > 0 ? (progress / totalDuration) * 100 : 0
 
   return (
     <AnimatePresence>
@@ -71,14 +72,14 @@ export default function FullPlayer() {
           transition={{ type: 'spring', stiffness: 260, damping: 32 }}
           className="fixed inset-0 z-[100] flex flex-col items-center overflow-hidden"
           style={{
-            background: 'linear-gradient(to bottom, rgba(10,10,20,0.97), rgba(5,5,10,0.99))',
+            background: 'linear-gradient(to bottom, rgba(15,10,15,0.97), rgba(5,5,8,0.99))',
           }}
         >
           {/* Backdrop blur layer */}
           <div className="absolute inset-0 backdrop-blur-3xl -z-10" aria-hidden="true" />
 
           {/* Header */}
-          <div className="w-full flex items-center justify-between px-5 pt-safe pt-10 pb-4">
+          <div className="w-full flex items-center justify-between px-5 pt-safe pt-10 pb-4 max-w-md">
             <button
               onClick={closeFullPlayer}
               className="p-2 text-white/60 hover:text-white transition-colors"
@@ -86,13 +87,13 @@ export default function FullPlayer() {
             >
               <ChevronDown size={28} />
             </button>
-            <span className="text-xs font-semibold tracking-widest text-white/40 uppercase">Now Playing</span>
+            <span className="text-xs font-extrabold tracking-widest text-red-500 uppercase">Now Playing</span>
             <div className="w-10" aria-hidden="true" />
           </div>
 
           {/* Artwork */}
           <motion.div
-            className="relative rounded-2xl overflow-hidden shadow-2xl mt-4"
+            className="relative rounded-2xl overflow-hidden shadow-2xl mt-4 border border-white/10"
             animate={{ scale: isPlaying ? 1 : 0.92 }}
             transition={{ type: 'spring', stiffness: 200, damping: 20 }}
           >
@@ -108,47 +109,47 @@ export default function FullPlayer() {
           </motion.div>
 
           {/* Track info */}
-          <div className="mt-8 px-8 w-full max-w-md text-center">
+          <div className="mt-6 px-8 w-full max-w-md text-center">
             <h1 className="text-2xl font-bold text-white truncate">{track.title}</h1>
             <p className="text-base text-white/50 mt-1 truncate">{track.artist}</p>
           </div>
 
           {/* Progress scrubber */}
-          <div className="mt-8 px-8 w-full max-w-md">
-            <div className="relative h-1 bg-white/10 rounded-full overflow-hidden mb-1">
+          <div className="mt-6 px-8 w-full max-w-md">
+            <div className="relative h-1.5 bg-white/10 rounded-full overflow-hidden mb-1">
               {/* Buffered */}
               <div
                 className="absolute inset-y-0 left-0 bg-white/20 rounded-full transition-all duration-300"
-                style={{ width: `${duration > 0 ? (buffered / duration) * 100 : 0}%` }}
+                style={{ width: `${totalDuration > 0 ? (buffered / totalDuration) * 100 : 0}%` }}
               />
               {/* Progress fill */}
               <div
-                className="absolute inset-y-0 left-0 bg-indigo-400 rounded-full transition-all duration-100"
+                className="absolute inset-y-0 left-0 bg-red-600 rounded-full transition-all duration-100"
                 style={{ width: `${progressPct}%` }}
               />
             </div>
             <input
               type="range"
               min={0}
-              max={duration || 100}
+              max={totalDuration || 100}
               step={0.1}
               value={progress}
               onChange={handleScrub}
-              className="w-full h-1 opacity-0 absolute cursor-pointer"
+              className="w-full h-2 opacity-0 absolute cursor-pointer"
               style={{ marginTop: '-0.5rem' }}
               aria-label="Seek"
             />
-            <div className="flex justify-between text-xs text-white/40 mt-1.5 tabular-nums">
+            <div className="flex justify-between text-xs text-white/50 mt-1.5 tabular-nums font-medium">
               <span>{formatTime(progress)}</span>
-              <span>-{formatTime(Math.max(0, duration - progress))}</span>
+              <span>{formatTime(totalDuration)}</span>
             </div>
           </div>
 
           {/* Controls */}
-          <div className="mt-8 px-8 w-full max-w-md flex items-center justify-between">
+          <div className="mt-6 px-8 w-full max-w-md flex items-center justify-between">
             <button
               onClick={toggleShuffle}
-              className={`p-2 rounded-full transition-colors ${shuffle ? 'text-indigo-400' : 'text-white/40 hover:text-white'}`}
+              className={`p-2 rounded-full transition-colors ${shuffle ? 'text-red-500' : 'text-white/40 hover:text-white'}`}
               aria-label="Toggle shuffle"
             >
               <Shuffle size={20} />
@@ -164,7 +165,7 @@ export default function FullPlayer() {
 
             <button
               onClick={togglePlay}
-              className="w-16 h-16 bg-white text-black rounded-full flex items-center justify-center hover:bg-white/90 transition-colors shadow-lg"
+              className="w-16 h-16 bg-red-600 text-white rounded-full flex items-center justify-center hover:bg-red-500 transition-colors shadow-lg shadow-red-600/40"
               aria-label={isPlaying ? 'Pause' : 'Play'}
             >
               {isPlaying
@@ -182,7 +183,7 @@ export default function FullPlayer() {
 
             <button
               onClick={cycleRepeat}
-              className={`p-2 rounded-full transition-colors ${repeatMode !== 'none' ? 'text-indigo-400' : 'text-white/40 hover:text-white'}`}
+              className={`p-2 rounded-full transition-colors ${repeatMode !== 'none' ? 'text-red-500' : 'text-white/40 hover:text-white'}`}
               aria-label="Toggle repeat"
             >
               <RepeatIcon mode={repeatMode} />
@@ -190,9 +191,9 @@ export default function FullPlayer() {
           </div>
 
           {/* Volume */}
-          <div className="mt-8 px-8 w-full max-w-md flex items-center gap-3">
+          <div className="mt-6 px-8 w-full max-w-md flex items-center gap-3">
             <VolumeX size={16} className="text-white/40 flex-shrink-0" />
-            <div className="relative flex-1 h-1 bg-white/10 rounded-full overflow-hidden">
+            <div className="relative flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
               <div
                 className="absolute inset-y-0 left-0 bg-white/70 rounded-full"
                 style={{ width: `${volume * 100}%` }}
@@ -205,7 +206,7 @@ export default function FullPlayer() {
               step={0.01}
               value={volume}
               onChange={handleVolume}
-              className="absolute opacity-0 h-1 cursor-pointer"
+              className="absolute opacity-0 h-2 cursor-pointer"
               style={{ width: 'calc(100% - 5rem)' }}
               aria-label="Volume"
             />
@@ -214,7 +215,7 @@ export default function FullPlayer() {
 
           {/* Queue preview */}
           {queue.length > 1 && (
-            <div className="mt-8 px-8 w-full max-w-md overflow-y-auto flex-1 pb-8">
+            <div className="mt-6 px-8 w-full max-w-md overflow-y-auto flex-1 pb-8">
               <p className="text-xs font-semibold tracking-widest text-white/30 uppercase mb-3">Up Next</p>
               {queue.slice(currentIndex + 1, currentIndex + 6).map((t, i) => (
                 <button
