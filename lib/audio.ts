@@ -46,12 +46,10 @@ class AudioEngine {
         const dur = this.howl?.duration() ?? 0
         this.callbacks.onLoad?.(dur)
       },
-      onloaderror: (_id: number, err: unknown) => {
-        console.error('[AudioEngine] load error:', err)
+      onloaderror: (_id: number | null, err: unknown) => {
         this.callbacks.onError?.(err)
       },
       onplayerror: (_id: number, err: unknown) => {
-        console.error('[AudioEngine] play error:', err)
         this.howl?.once('unlock', () => this.howl?.play())
         this.callbacks.onError?.(err)
       },

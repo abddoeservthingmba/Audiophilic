@@ -44,7 +44,6 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  console.error('[stream] All nodes failed:', errors)
   return Response.json(
     { error: 'Stream unavailable from all nodes', details: errors },
     { status: 502 }
