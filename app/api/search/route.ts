@@ -24,23 +24,31 @@ const AUDIUS_NODES = [
   'https://audius-dp.figment.io',
 ]
 
+function proxyImage(url: string): string {
+  if (!url || url.startsWith('data:') || url.startsWith('/')) return url
+  return `/api/image?url=${encodeURIComponent(url)}`
+}
+
 function itunesArtworkUrl(raw: string, size: number): string {
-  return raw.replace('100x100bb', `${size}x${size}bb`).replace('100x100', `${size}x${size}`)
+  const url = raw.replace('100x100bb', `${size}x${size}bb`).replace('100x100', `${size}x${size}`)
+  return proxyImage(url)
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapDeezerTrack(t: any): Track | null {
   if (!t.title || !t.artist?.name) return null
-  const cover = t.album?.cover_medium ?? t.album?.cover_big ?? `https://placehold.co/480x480/1a1a2e/ffffff?text=${encodeURIComponent(t.title.charAt(0))}`
+  const rawCover = t.album?.cover_medium ?? t.album?.cover_big ?? `https://placehold.co/480x480/1a1a2e/ffffff?text=${encodeURIComponent(t.title.charAt(0))}`
+  const cover = proxyImage(rawCover)
+
   return {
     id: `dz-${t.id}`,
     title: t.title,
     artist: t.artist.name,
     album: t.album?.title,
     artwork: {
-      '150x150': t.album?.cover_small ?? cover,
-      '480x480': t.album?.cover_big ?? cover,
-      '1000x1000': t.album?.cover_xl ?? cover,
+      '150x150': t.album?.cover_small ? proxyImage(t.album.cover_small) : cover,
+      '480x480': t.album?.cover_big ? proxyImage(t.album.cover_big) : cover,
+      '1000x1000': t.album?.cover_xl ? proxyImage(t.album.cover_xl) : cover,
     },
     streamUrl: `/api/stream?q=${encodeURIComponent(`${t.title} ${t.artist.name}`)}`,
     duration: t.duration ?? 210,
@@ -77,14 +85,18 @@ function mapItunesTrack(t: any): Track | null {
 function mapAudiusTrack(t: any): Track {
   const artwork = t.artwork ?? {}
   const placeholder = `https://placehold.co/480x480/1a1a2e/ffffff?text=${encodeURIComponent((t.title ?? 'A').charAt(0))}`
+  const raw150 = artwork['150x150'] ?? placeholder
+  const raw480 = artwork['480x480'] ?? placeholder
+  const raw1000 = artwork['1000x1000'] ?? placeholder
+
   return {
     id: `audius-${t.id}`,
     title: t.title ?? 'Unknown Title',
     artist: t.user?.name ?? 'Unknown Artist',
     artwork: {
-      '150x150': artwork['150x150'] ?? placeholder,
-      '480x480': artwork['480x480'] ?? placeholder,
-      '1000x1000': artwork['1000x1000'] ?? placeholder,
+      '150x150': proxyImage(raw150),
+      '480x480': proxyImage(raw480),
+      '1000x1000': proxyImage(raw1000),
     },
     streamUrl: `/api/stream?id=${encodeURIComponent(t.id)}`,
     duration: t.duration ?? 0,

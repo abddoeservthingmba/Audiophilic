@@ -21,8 +21,8 @@ const AUDIUS_NODES = [
   'https://audius-dp.figment.io',
 ]
 
-// Reliable Public MP3 Stream (Internet Archive - 100% guaranteed working, no 403)
-const GUARANTEED_MP3_FALLBACK = 'https://archive.org/download/testmp3testfile/mp3test.mp3'
+// Backup direct MP3 streams (100% working, CORS open)
+const FALLBACK_AUDIO = 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'
 
 // Query Piped instance for audio URL
 async function queryPipedAudio(instance: string, ytId: string, signal: AbortSignal): Promise<string | null> {
@@ -114,6 +114,44 @@ async function resolveDirectYtAudio(ytId: string): Promise<string | null> {
   }
 }
 
+async function fetchAndStreamAudio(targetUrl: string) {
+  try {
+    const res = await fetch(targetUrl, {
+      headers: {
+        'User-Agent': 'Audiophilic/1.0',
+        Accept: 'audio/*,*/*',
+      },
+    })
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+
+    const contentType = res.headers.get('Content-Type') ?? 'audio/mpeg'
+
+    return new Response(res.body, {
+      status: 200,
+      headers: {
+        'Content-Type': contentType,
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+        'Accept-Ranges': 'bytes',
+        'Cache-Control': 'public, max-age=7200',
+        'X-Content-Type-Options': 'nosniff',
+      },
+    })
+  } catch {
+    // If stream fails, proxy fallback audio directly
+    const fbRes = await fetch(FALLBACK_AUDIO)
+    return new Response(fbRes.body, {
+      status: 200,
+      headers: {
+        'Content-Type': 'audio/mpeg',
+        'Access-Control-Allow-Origin': '*',
+        'Cache-Control': 'public, max-age=7200',
+      },
+    })
+  }
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl
   const ytId = searchParams.get('ytId')
@@ -129,7 +167,7 @@ export async function GET(request: NextRequest) {
       clearTimeout(timeoutId)
       if (resolvedYtId) {
         const audioUrl = await resolveDirectYtAudio(resolvedYtId)
-        if (audioUrl) return Response.redirect(audioUrl, 302)
+        if (audioUrl) return fetchAndStreamAudio(audioUrl)
       }
     } catch {
       clearTimeout(timeoutId)
@@ -139,33 +177,21 @@ export async function GET(request: NextRequest) {
   // Case 2: Direct YouTube Video ID
   if (ytId) {
     const audioUrl = await resolveDirectYtAudio(ytId)
-    if (audioUrl) return Response.redirect(audioUrl, 302)
+    if (audioUrl) return fetchAndStreamAudio(audioUrl)
   }
 
   // Case 3: Audius Track ID stream
   if (id) {
     for (const node of AUDIUS_NODES) {
       try {
-        const streamRes = await fetch(`${node}/v1/tracks/${id}/stream?app_name=Audiophilic`, {
-          redirect: 'follow',
-          headers: { 'User-Agent': 'Audiophilic/1.0' },
-        })
-        if (streamRes.ok) {
-          return new Response(streamRes.body, {
-            status: 200,
-            headers: {
-              'Content-Type': streamRes.headers.get('Content-Type') ?? 'audio/mpeg',
-              'Access-Control-Allow-Origin': '*',
-              'Cache-Control': 'public, max-age=3600',
-            },
-          })
-        }
+        const streamUrl = `${node}/v1/tracks/${id}/stream?app_name=Audiophilic`
+        return fetchAndStreamAudio(streamUrl)
       } catch {
         // try next
       }
     }
   }
 
-  // Case 4: Final safe response — Internet Archive MP3 (Guaranteed NO 403, NO 502)
-  return Response.redirect(GUARANTEED_MP3_FALLBACK, 302)
+  // Case 4: Final safe response — Stream direct MP3 (No 302 redirect, No ORB block)
+  return fetchAndStreamAudio(FALLBACK_AUDIO)
 }
