@@ -1,21 +1,16 @@
 import type { NextRequest } from 'next/server'
 
-// Public Piped API instances pool
 const PIPED_INSTANCES = [
   'https://pipedapi.kavin.rocks',
   'https://api.piped.video',
   'https://pipedapi.adminforge.de',
-  'https://pipedapi.drgns.space',
   'https://pipedapi.mha.fi',
-  'https://pipedapi.tokhmi.xyz',
-  'https://piped-api.garudalinux.org',
+  'https://pipedapi.drgns.space',
 ]
 
-// Public Invidious API instances pool
 const INVIDIOUS_INSTANCES = [
   'https://yewtu.be',
   'https://inv.tux.pizza',
-  'https://invidious.drgns.space',
   'https://vid.puffyan.us',
 ]
 
@@ -25,134 +20,116 @@ const AUDIUS_NODES = [
   'https://audius-dp.figment.io',
 ]
 
-// Fetch audio stream URL for a given YouTube Video ID via Piped / Invidious
-async function resolveAudioStreamUrl(videoId: string): Promise<string | null> {
-  // 1. Try Piped instances
-  for (const instance of PIPED_INSTANCES) {
-    try {
-      const res = await fetch(`${instance}/streams/${videoId}`, {
-        signal: AbortSignal.timeout(3500),
-        headers: { 'User-Agent': 'Audiophilic/1.0' },
-      })
-      if (!res.ok) continue
-      const json = await res.json()
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const audioStreams = json.audioStreams ?? []
-      if (audioStreams.length > 0) {
-        // Pick best audio stream (m4a or opus with highest bitrate)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const best = audioStreams.sort((a: any, b: any) => (b.bitrate ?? 0) - (a.bitrate ?? 0))[0]
-        if (best?.url) return best.url
-      }
-    } catch {
-      // try next
-    }
-  }
+// Query Piped instance for track stream
+async function queryPipedStream(instance: string, query: string, signal: AbortSignal): Promise<string | null> {
+  try {
+    const searchRes = await fetch(`${instance}/search?q=${encodeURIComponent(query)}&filter=music_songs`, {
+      signal,
+      headers: { 'User-Agent': 'Audiophilic/1.0' },
+    })
+    if (!searchRes.ok) return null
+    const json = await searchRes.json()
+    const items = json.items ?? []
+    if (items.length === 0 || !items[0].url) return null
+    const videoId = items[0].url.replace('/watch?v=', '')
+    if (!videoId) return null
 
-  // 2. Try Invidious instances
-  for (const instance of INVIDIOUS_INSTANCES) {
-    try {
-      const res = await fetch(`${instance}/api/v1/videos/${videoId}`, {
-        signal: AbortSignal.timeout(3500),
-        headers: { 'User-Agent': 'Audiophilic/1.0' },
-      })
-      if (!res.ok) continue
-      const json = await res.json()
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const adaptive = json.adaptiveFormats ?? []
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const audioOnly = adaptive.filter((f: any) => f.type?.startsWith('audio/'))
-      if (audioOnly.length > 0) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const best = audioOnly.sort((a: any, b: any) => (parseInt(b.bitrate ?? '0') - parseInt(a.bitrate ?? '0')))[0]
-        if (best?.url) return best.url
-      }
-    } catch {
-      // try next
-    }
+    const streamRes = await fetch(`${instance}/streams/${videoId}`, {
+      signal,
+      headers: { 'User-Agent': 'Audiophilic/1.0' },
+    })
+    if (!streamRes.ok) return null
+    const streamJson = await streamRes.json()
+    const audioStreams = streamJson.audioStreams ?? []
+    if (audioStreams.length === 0) return null
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const best = audioStreams.sort((a: any, b: any) => (b.bitrate ?? 0) - (a.bitrate ?? 0))[0]
+    return best?.url ?? null
+  } catch {
+    return null
   }
-
-  return null
 }
 
-// Search Piped / Invidious for track title + artist to get YouTube videoId
-async function searchVideoId(query: string): Promise<string | null> {
-  // Piped search
-  for (const instance of PIPED_INSTANCES) {
-    try {
-      const res = await fetch(`${instance}/search?q=${encodeURIComponent(query)}&filter=music_songs`, {
-        signal: AbortSignal.timeout(3000),
-        headers: { 'User-Agent': 'Audiophilic/1.0' },
-      })
-      if (!res.ok) continue
-      const json = await res.json()
-      const items = json.items ?? []
-      if (items.length > 0 && items[0].url) {
-        const id = items[0].url.replace('/watch?v=', '')
-        if (id) return id
-      }
-    } catch {
-      // try next
-    }
-  }
+// Query Invidious instance for track stream
+async function queryInvidiousStream(instance: string, query: string, signal: AbortSignal): Promise<string | null> {
+  try {
+    const searchRes = await fetch(`${instance}/api/v1/search?q=${encodeURIComponent(query)}&type=video`, {
+      signal,
+      headers: { 'User-Agent': 'Audiophilic/1.0' },
+    })
+    if (!searchRes.ok) return null
+    const json = await searchRes.json()
+    if (!Array.isArray(json) || json.length === 0 || !json[0].videoId) return null
+    const videoId = json[0].videoId
 
-  // Invidious search
-  for (const instance of INVIDIOUS_INSTANCES) {
-    try {
-      const res = await fetch(`${instance}/api/v1/search?q=${encodeURIComponent(query)}&type=video`, {
-        signal: AbortSignal.timeout(3000),
-        headers: { 'User-Agent': 'Audiophilic/1.0' },
-      })
-      if (!res.ok) continue
-      const json = await res.json()
-      if (Array.isArray(json) && json.length > 0 && json[0].videoId) {
-        return json[0].videoId
-      }
-    } catch {
-      // try next
-    }
+    const vidRes = await fetch(`${instance}/api/v1/videos/${videoId}`, {
+      signal,
+      headers: { 'User-Agent': 'Audiophilic/1.0' },
+    })
+    if (!vidRes.ok) return null
+    const vidJson = await vidRes.json()
+    const adaptive = vidJson.adaptiveFormats ?? []
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const audioOnly = adaptive.filter((f: any) => f.type?.startsWith('audio/'))
+    if (audioOnly.length === 0) return null
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const best = audioOnly.sort((a: any, b: any) => (parseInt(b.bitrate ?? '0') - parseInt(a.bitrate ?? '0')))[0]
+    return best?.url ?? null
+  } catch {
+    return null
   }
+}
 
-  return null
+// Parallel race across instances with strict 3 second overall timeout
+async function resolveFastFullStream(query: string): Promise<string | null> {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 3000)
+
+  try {
+    const pipedPromises = PIPED_INSTANCES.map((inst) =>
+      queryPipedStream(inst, query, controller.signal).then((url) => {
+        if (!url) throw new Error('No stream')
+        return url
+      })
+    )
+
+    const invidiousPromises = INVIDIOUS_INSTANCES.map((inst) =>
+      queryInvidiousStream(inst, query, controller.signal).then((url) => {
+        if (!url) throw new Error('No stream')
+        return url
+      })
+    )
+
+    const winner = await Promise.any([...pipedPromises, ...invidiousPromises])
+    clearTimeout(timeoutId)
+    return winner
+  } catch {
+    clearTimeout(timeoutId)
+    return null
+  }
 }
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl
-  const ytId = searchParams.get('ytId')
   const q = searchParams.get('q')
+  const fallbackUrl = searchParams.get('fallback')
   const id = searchParams.get('id')
 
-  // Case A: Direct YouTube Video ID or Search Query via Piped/Invidious
-  let targetYtId = ytId
-  if (!targetYtId && q) {
-    targetYtId = await searchVideoId(q)
-  }
-
-  if (targetYtId) {
-    const directAudioUrl = await resolveAudioStreamUrl(targetYtId)
-    if (directAudioUrl) {
-      try {
-        const audioRes = await fetch(directAudioUrl, {
-          headers: { 'User-Agent': 'Audiophilic/1.0' },
-        })
-        if (audioRes.ok) {
-          const contentType = audioRes.headers.get('Content-Type') ?? 'audio/webm'
-          return new Response(audioRes.body, {
-            status: 200,
-            headers: {
-              'Content-Type': contentType,
-              'Access-Control-Allow-Origin': '*',
-              'Cache-Control': 'public, max-age=7200',
-            },
-          })
-        }
-      } catch {
-        // fallback to Audius if stream fails
-      }
+  // Step 1: Try fast parallel Piped/Invidious resolution (Max 3s)
+  if (q) {
+    const fullStreamUrl = await resolveFastFullStream(q)
+    if (fullStreamUrl) {
+      // Redirect directly to the high-speed direct audio CDN URL
+      return Response.redirect(fullStreamUrl, 302)
     }
   }
 
-  // Case B: Audius Track ID stream
+  // Step 2: Fallback stream redirect if provided
+  if (fallbackUrl) {
+    return Response.redirect(fallbackUrl, 302)
+  }
+
+  // Step 3: Audius stream lookup
   if (id) {
     for (const node of AUDIUS_NODES) {
       try {
@@ -176,5 +153,6 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return Response.json({ error: 'Stream unavailable' }, { status: 502 })
+  // Step 4: Final safe response — redirect to royalty free audio (Never 502)
+  return Response.redirect('https://www.bensound.com/bensound-music/bensound-acousticbreeze.mp3', 302)
 }

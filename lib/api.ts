@@ -11,7 +11,7 @@ export interface Track {
   streamUrl: string
   duration: number
   playCount: number
-  source: 'piped' | 'deezer' | 'itunes' | 'audius' | 'jamendo' | 'fallback'
+  source: 'deezer' | 'itunes' | 'audius' | 'jamendo' | 'fallback'
   isPreview?: boolean
   genre?: string
 }
@@ -21,13 +21,14 @@ export type Genre = 'All' | 'Pop' | 'Hip-Hop/Rap' | 'Electronic' | 'R&B/Soul' | 
 export const GENRES: Genre[] = ['All', 'Pop', 'Hip-Hop/Rap', 'Electronic', 'R&B/Soul', 'Rock', 'Country', 'Latin', 'Dance']
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Deezer Charts & Search (Metadata + Full Piped stream resolution)
+// Deezer Charts & Search (Metadata + Piped full stream with direct fallback)
 // ─────────────────────────────────────────────────────────────────────────────
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapDeezerTrack(t: any): Track | null {
   if (!t.title || !t.artist?.name) return null
   const cover = t.album?.cover_medium ?? t.album?.cover_big ?? `https://placehold.co/480x480/1a1a2e/ffffff?text=${encodeURIComponent((t.title ?? 'D').charAt(0))}`
+  const directFallback = t.preview ? encodeURIComponent(t.preview) : ''
   return {
     id: `deezer-${t.id}`,
     title: t.title,
@@ -38,8 +39,8 @@ function mapDeezerTrack(t: any): Track | null {
       '480x480': t.album?.cover_big ?? cover,
       '1000x1000': t.album?.cover_xl ?? cover,
     },
-    // Stream full song via Piped/Invidious query proxy!
-    streamUrl: `/api/stream?q=${encodeURIComponent(`${t.title} ${t.artist.name}`)}`,
+    // Fast parallel full stream lookup + safe fallback
+    streamUrl: `/api/stream?q=${encodeURIComponent(`${t.title} ${t.artist.name}`)}&fallback=${directFallback}`,
     duration: t.duration ?? 210,
     playCount: t.rank ?? 0,
     source: 'deezer',
@@ -72,7 +73,7 @@ async function searchDeezer(query: string, limit = 25): Promise<Track[]> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// iTunes / Apple Music (Top Charts & Search + Full Piped stream resolution)
+// iTunes / Apple Music (Top Charts & Search + Piped full stream with fallback)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const ITUNES_GENRE_IDS: Record<Genre, number | null> = {
@@ -97,6 +98,7 @@ function itunesArtworkUrl(raw: string, size: number): string {
 function mapItunesTrack(t: any): Track | null {
   if (!t.trackName || !t.artistName) return null
   const raw = t.artworkUrl100 ?? ''
+  const directFallback = t.previewUrl ? encodeURIComponent(t.previewUrl) : ''
   return {
     id: `itunes-${t.trackId}`,
     title: t.trackName,
@@ -107,8 +109,8 @@ function mapItunesTrack(t: any): Track | null {
       '480x480': itunesArtworkUrl(raw, 600),
       '1000x1000': itunesArtworkUrl(raw, 1000),
     },
-    // Stream full song via Piped/Invidious query proxy!
-    streamUrl: `/api/stream?q=${encodeURIComponent(`${t.trackName} ${t.artistName}`)}`,
+    // Fast parallel full stream lookup + safe fallback
+    streamUrl: `/api/stream?q=${encodeURIComponent(`${t.trackName} ${t.artistName}`)}&fallback=${directFallback}`,
     duration: Math.round((t.trackTimeMillis ?? 210000) / 1000),
     playCount: 0,
     source: 'itunes',
