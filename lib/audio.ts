@@ -16,6 +16,9 @@ declare global {
   }
 }
 
+// 1-second silent WAV audio data URI to maintain background audio focus across browsers & WebViews
+const SILENT_AUDIO_WAV = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA=='
+
 class AudioEngine {
   private audio: HTMLAudioElement | null = null
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -30,9 +33,9 @@ class AudioEngine {
 
   constructor() {
     if (typeof window !== 'undefined') {
-      this.audio = new Audio()
-      this.audio.preload = 'auto'
-      this.audio.volume = this._volume
+      this.audio = new Audio(SILENT_AUDIO_WAV)
+      this.audio.loop = true
+      this.audio.volume = 0.01 // silent background anchor
 
       this.audio.addEventListener('play', () => {
         if (!this.useYtIframe) this.callbacks.onPlay?.()
@@ -44,6 +47,14 @@ class AudioEngine {
 
       this.audio.addEventListener('ended', () => {
         if (!this.useYtIframe) this.callbacks.onEnd?.()
+      })
+
+      this.audio.addEventListener('waiting', () => {
+        if (!this.useYtIframe) this.callbacks.onBuffering?.(true)
+      })
+
+      this.audio.addEventListener('playing', () => {
+        if (!this.useYtIframe) this.callbacks.onBuffering?.(false)
       })
 
       this.audio.addEventListener('loadedmetadata', () => {
@@ -61,7 +72,19 @@ class AudioEngine {
       })
 
       this.audio.addEventListener('error', (e) => {
-        if (!this.useYtIframe) this.callbacks.onError?.(e)
+        if (!this.useYtIframe) {
+          console.warn('HTML5 audio error, falling back to YT player:', e)
+          if (this.currentYtId) {
+            this.useYtIframe = true
+            this.initYouTubeIframe()
+            if (this.ytPlayer && typeof this.ytPlayer.loadVideoById === 'function') {
+              this.ytPlayer.loadVideoById(this.currentYtId)
+              this.ytPlayer.playVideo()
+            }
+          } else {
+            this.callbacks.onError?.(e)
+          }
+        }
       })
 
       this.initYouTubeIframe()
@@ -76,12 +99,13 @@ class AudioEngine {
       container = document.createElement('div')
       container.id = 'audiophilic-yt-container'
       container.style.position = 'fixed'
-      container.style.top = '-9999px'
-      container.style.left = '-9999px'
+      container.style.bottom = '0'
+      container.style.right = '0'
       container.style.width = '1px'
       container.style.height = '1px'
-      container.style.opacity = '0'
+      container.style.opacity = '0.001'
       container.style.pointerEvents = 'none'
+      container.style.zIndex = '-9999'
       document.body.appendChild(container)
     }
 
@@ -118,6 +142,9 @@ class AudioEngine {
                 this.callbacks.onBuffering?.(false)
                 this.callbacks.onPlay?.()
                 this.startProgressTimer()
+                if (this.audio && this.audio.paused) {
+                  this.audio.play().catch(() => {})
+                }
               } else if (event.data === 2) { // PAUSED
                 this.callbacks.onBuffering?.(false)
                 this.callbacks.onPause?.()
@@ -132,11 +159,7 @@ class AudioEngine {
             },
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             onError: (err: any) => {
-              console.warn('YT Iframe error, falling back to stream endpoint:', err)
-              this.useYtIframe = false
-              if (this.currentStreamUrl) {
-                this.loadHtml5(this.currentStreamUrl)
-              }
+              console.warn('YT Iframe error notice:', err)
             },
           },
         })
@@ -199,15 +222,21 @@ class AudioEngine {
     this.currentStreamUrl = ytIdOrUrl
     this.currentYtId = targetYtId
 
-    if (this.useYtIframe && targetYtId && this.ytPlayer && typeof this.ytPlayer.loadVideoById === 'function') {
-      try {
-        this.ytPlayer.loadVideoById(targetYtId)
-        if (typeof this.ytPlayer.setVolume === 'function') {
-          this.ytPlayer.setVolume(this._volume * 100)
+    if (targetYtId) {
+      this.useYtIframe = true
+      if (this.ytPlayer && typeof this.ytPlayer.loadVideoById === 'function') {
+        try {
+          this.ytPlayer.loadVideoById(targetYtId)
+          if (typeof this.ytPlayer.setVolume === 'function') {
+            this.ytPlayer.setVolume(this._volume * 100)
+          }
+          return
+        } catch (e) {
+          console.warn('ytPlayer.loadVideoById failed, falling back:', e)
         }
+      } else {
+        this.initYouTubeIframe()
         return
-      } catch (e) {
-        console.warn('ytPlayer.loadVideoById failed, falling back:', e)
       }
     }
 
@@ -218,10 +247,16 @@ class AudioEngine {
     if (!this.audio) return
     this.useYtIframe = false
     this.audio.src = src
+    this.audio.loop = false
+    this.audio.volume = this._volume
     this.audio.load()
   }
 
   play(): Promise<void> | void {
+    if (this.audio && this.audio.paused) {
+      this.audio.play().catch(() => {})
+    }
+
     if (this.useYtIframe && this.ytPlayer && typeof this.ytPlayer.playVideo === 'function') {
       try {
         this.ytPlayer.playVideo()

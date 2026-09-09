@@ -127,45 +127,56 @@ async function resolveDirectYtAudio(ytId: string): Promise<string | null> {
   }
 }
 
-async function fetchAndStreamAudio(targetUrl: string) {
-  const res = await fetch(targetUrl, {
-    headers: {
-      'User-Agent': 'Audiophilic/1.0',
-      Accept: 'audio/*,*/*',
-    },
-  })
+async function fetchAndStreamAudio(targetUrl: string, rangeHeader?: string | null) {
+  const fetchHeaders: Record<string, string> = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    Accept: 'audio/*,*/*',
+  }
+  if (rangeHeader) {
+    fetchHeaders['Range'] = rangeHeader
+  }
 
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  const res = await fetch(targetUrl, { headers: fetchHeaders })
+  if (!res.ok && res.status !== 206) throw new Error(`HTTP ${res.status}`)
 
-  const contentType = res.headers.get('Content-Type') ?? 'audio/mpeg'
+  const contentType = res.headers.get('Content-Type') ?? 'audio/webm'
+  const contentRange = res.headers.get('Content-Range')
+  const contentLength = res.headers.get('Content-Length')
+
+  const responseHeaders: Record<string, string> = {
+    'Content-Type': contentType,
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'Accept-Ranges': 'bytes',
+    'Cache-Control': 'public, max-age=7200',
+    'X-Content-Type-Options': 'nosniff',
+  }
+
+  if (contentRange) responseHeaders['Content-Range'] = contentRange
+  if (contentLength) responseHeaders['Content-Length'] = contentLength
 
   return new Response(res.body, {
-    status: 200,
-    headers: {
-      'Content-Type': contentType,
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, OPTIONS',
-      'Accept-Ranges': 'bytes',
-      'Cache-Control': 'public, max-age=7200',
-      'X-Content-Type-Options': 'nosniff',
-    },
+    status: res.status === 206 ? 206 : 200,
+    headers: responseHeaders,
   })
 }
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl
   const ytId = searchParams.get('ytId') ?? 'kJQP7kiw5Fk'
+  const rangeHeader = request.headers.get('range')
 
   const audioUrl = await resolveDirectYtAudio(ytId)
   if (audioUrl) {
-    return fetchAndStreamAudio(audioUrl)
+    return fetchAndStreamAudio(audioUrl, rangeHeader)
   }
 
-  // Fallback to Despacito direct audio if resolution fails (4:41 full length)
+  // Fallback to Despacito direct audio if resolution fails
   const defaultAudioUrl = await resolveDirectYtAudio('kJQP7kiw5Fk')
   if (defaultAudioUrl) {
-    return fetchAndStreamAudio(defaultAudioUrl)
+    return fetchAndStreamAudio(defaultAudioUrl, rangeHeader)
   }
 
   return Response.json({ error: 'Audio stream unavailable' }, { status: 500 })
 }
+
